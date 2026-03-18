@@ -1,0 +1,1890 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>מערכת השוואת מדרשים וגניזת קהיר</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700&family=Suez+One&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Assistant', sans-serif; background-color: #f1f5f9; }
+        .serif-heb { font-family: 'Suez One', serif; line-height: 1.8; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .text-view { max-height: 38vh; overflow-y: auto; scrollbar-width: thin; }
+        .highlight-src { background-color: #dcfce7; font-weight: 600; color: #166534; padding: 0 4px; border-radius: 4px; border-bottom: 2px solid #86efac; }
+        .highlight-tgt { background-color: #fee2e2; font-weight: 600; color: #991b1b; padding: 0 4px; border-radius: 4px; border-bottom: 2px solid #fca5a5; }
+
+        /* Dual Range Slider */
+        .range-slider { position: relative; width: 180px; height: 24px; }
+        .range-slider input[type="range"] { position: absolute; width: 100%; height: 100%; top: 0; left: 0; pointer-events: none; -webkit-appearance: none; background: none; z-index: 2; margin: 0; }
+        .range-slider input[type="range"]::-webkit-slider-thumb { pointer-events: auto; width: 16px; height: 16px; border-radius: 50%; background: #2563eb; cursor: pointer; -webkit-appearance: none; box-shadow: 0 1px 3px rgba(0,0,0,0.3); border: 2px solid white; }
+        .range-track { position: absolute; top: 10px; height: 4px; width: 100%; background: #cbd5e1; border-radius: 2px; z-index: 1; }
+        .range-fill { position: absolute; top: 10px; height: 4px; background: #3b82f6; border-radius: 2px; z-index: 1; }
+
+        /* Skyline */
+        .skyline-container { display: flex; align-items: flex-end; gap: 1px; overflow-x: auto; overflow-y: hidden; height: 280px; padding: 20px 20px 0 20px; background: linear-gradient(to bottom, #1e293b, #0f172a); border-radius: 16px; box-shadow: inset 0 4px 20px rgba(0,0,0,0.5); }
+        .skyline-bar { background-color: #334155; transition: all 0.3s ease; cursor: pointer; border-top-left-radius: 2px; border-top-right-radius: 2px; position: relative; }
+        .skyline-bar:hover { filter: brightness(1.5); box-shadow: 0 0 10px rgba(255,255,255,0.2); z-index: 10; }
+        .skyline-bar.active-bar { background-color: #3b82f6 !important; box-shadow: 0 0 15px #3b82f6; }
+        .dr-tooltip { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: white; padding: 4px 8px; border-radius: 4px; font-size: 10px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.2s; margin-bottom: 8px; font-family: monospace; }
+        .skyline-bar:hover .dr-tooltip { opacity: 1; }
+
+        /* Metadata panel */
+        .meta-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #0f766e; letter-spacing: 0.05em; display: block; margin-bottom: 2px; }
+        .meta-panel { background: linear-gradient(135deg, #f0fdfa, #ecfeff); border-top: 1px solid #99f6e4; }
+
+        /* Search tab */
+        .search-card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; transition: all 0.2s; }
+        .search-card:hover { border-color: #93c5fd; box-shadow: 0 4px 12px rgba(59,130,246,0.1); }
+        .match-border-has { border-right: 4px solid #10b981; }
+        .match-border-none { border-right: 4px solid #cbd5e1; }
+        .stat-bar { height: 8px; background: #f1f5f9; border-radius: 9999px; overflow: hidden; }
+        .stat-bar-fill { height: 100%; border-radius: 9999px; transition: width 0.6s ease; }
+
+        /* Tabs within left column */
+        .inner-tab-active { background: white; color: #92400e; font-weight: 700; border-bottom: 2px solid #f59e0b; }
+        .inner-tab-inactive { background: transparent; color: #78716c; border-bottom: 2px solid transparent; }
+
+        /* Scrollbars */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden text-slate-800">
+
+    <!-- ═══════════════ HEADER ═══════════════ -->
+    <header class="bg-slate-900 text-white p-3 shadow-xl flex justify-between items-center z-50 flex-wrap gap-2">
+        <div class="flex items-center gap-3">
+            <div class="bg-blue-600 p-2.5 rounded-xl shadow-inner flex-shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-lg font-bold tracking-tight" id="mainTitle">מערכת השוואת מדרשים — גניזת קהיר</h1>
+                <p class="text-[10px] text-blue-300 font-bold uppercase tracking-widest">גרסה 3.0 | טעינה מרובת-ספרים · מדדי דמיון · חיפוש מתקדם</p>
+            </div>
+        </div>
+
+        <div class="flex gap-3 items-center flex-wrap">
+            <!-- Score Slider -->
+            <div class="flex flex-col bg-slate-800 px-3 py-2 rounded-xl border border-slate-700">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-[10px] text-slate-400 font-bold uppercase">סינון ציון:</span>
+                    <span id="rangeLabel" class="text-[10px] text-blue-400 font-mono font-bold">0.00 – 1.00</span>
+                </div>
+                <div class="range-slider">
+                    <div class="range-track"></div>
+                    <div class="range-fill" id="sliderFill"></div>
+                    <input type="range" id="minScore" min="0" max="1" step="any" value="0">
+                    <input type="range" id="maxScore" min="0" max="1" step="any" value="1">
+                </div>
+            </div>
+
+            <div class="w-px h-10 bg-slate-700"></div>
+
+            <!-- Dataset Tabs -->
+            <div id="datasetTabs" class="hidden flex gap-1 bg-slate-800 p-1 rounded-xl border border-slate-700 max-w-xs overflow-x-auto flex-shrink-0"></div>
+
+            <!-- Open Directory / Load Files -->
+            <div class="flex flex-row items-center gap-2">
+                <button onclick="openDirectory()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-xs font-bold shadow-md flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+                    פתח תיקיה
+                </button>
+                <button onclick="openSingleFile()" class="bg-slate-600 hover:bg-slate-500 px-4 py-2 rounded-lg text-xs font-bold shadow-md flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                    פתח קובץ יחיד
+                </button>
+                <input type="file" id="multiFileInput" accept=".json" multiple class="hidden">
+                <input type="file" id="singleFileInput" accept=".json" class="hidden">
+            </div>
+
+            <!-- Enriched JSON (metadata) -->
+            <div class="flex flex-col gap-1">
+                <button onclick="document.getElementById('enrichedJsonInput').click()" class="bg-teal-600 hover:bg-teal-500 px-4 py-2 rounded-lg text-xs transition-all font-bold shadow-md flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    מטה-דאטה גניזה
+                </button>
+                <span id="enrichedJsonStatus" class="text-[10px] text-center px-2 py-0.5 rounded-full bg-slate-700 text-slate-400 font-bold">לא נטען</span>
+            </div>
+            <input type="file" id="enrichedJsonInput" accept=".json" class="hidden">
+
+            <!-- Metric Selector -->
+            <div class="flex flex-col bg-slate-800 px-3 py-2 rounded-xl border border-slate-700 flex-shrink-0">
+                <span class="text-[10px] text-slate-400 font-bold uppercase mb-1">מדד דמיון:</span>
+                <div class="flex gap-1">
+                    <button onclick="setActiveMetric('alignment_score')" id="metricBtn-alignment_score" class="px-2 py-1 rounded text-[10px] font-bold bg-blue-600 text-white">יישור</button>
+                    <button onclick="setActiveMetric('norm_score')" id="metricBtn-norm_score" class="px-2 py-1 rounded text-[10px] font-bold bg-slate-700 text-slate-300 hover:bg-slate-600">מנורמל</button>
+                    <button onclick="setActiveMetric('score')" id="metricBtn-score" class="px-2 py-1 rounded text-[10px] font-bold bg-slate-700 text-slate-300 hover:bg-slate-600">גלם</button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- ═══════════════ NAV TABS ═══════════════ -->
+    <nav class="bg-white border-b border-slate-200 flex shadow-sm z-30 px-4">
+        <button onclick="switchView('units')" id="nav-units" class="px-6 py-3.5 font-bold text-sm transition-all border-b-4 border-blue-600 text-blue-800 bg-blue-50">השוואת קטעים פרטנית</button>
+        <button onclick="switchView('fragments')" id="nav-fragments" class="px-6 py-3.5 font-bold text-sm transition-all border-b-4 border-transparent text-slate-600 hover:bg-slate-50">מקבצי גניזה (לפי דפים)</button>
+        <button onclick="switchView('distant')" id="nav-distant" class="px-6 py-3.5 font-bold text-sm transition-all border-b-4 border-transparent text-indigo-700 flex items-center gap-2 hover:bg-indigo-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+            מבט-על (Distant Reading)
+        </button>
+        <button onclick="switchView('search')" id="nav-search" class="px-6 py-3.5 font-bold text-sm transition-all border-b-4 border-transparent text-purple-700 flex items-center gap-2 hover:bg-purple-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            חיפוש וניתוח ◈
+        </button>
+    </nav>
+
+    <main class="flex-1 flex overflow-hidden">
+
+        <!-- ═══════════════ SIDEBAR ═══════════════ -->
+        <aside id="sidebar" class="w-72 bg-slate-50 border-l border-slate-200 flex flex-col h-full shadow-[inset_0_0_10px_rgba(0,0,0,0.02)] transition-all z-20 flex-shrink-0">
+            <div class="p-3 border-b border-slate-200 bg-white">
+                <div class="relative">
+                    <input type="text" id="sidebarSearch" placeholder="חיפוש קטעים..." class="w-full pr-9 pl-3 py-2.5 bg-slate-100 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute right-2.5 top-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                </div>
+            </div>
+            <div id="sidebarStats" class="text-[10px] text-slate-500 font-bold py-1 px-3 bg-slate-100 border-b border-slate-200 text-center uppercase tracking-wider">מציג 0 קטעים</div>
+            <div id="sidebarList" class="flex-1 overflow-y-auto p-2 space-y-1.5">
+                <div class="text-center text-slate-400 mt-10 p-5 border-2 border-dashed border-slate-200 rounded-xl">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mx-auto text-slate-300 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
+                    <p class="text-sm font-bold">טען קובץ נתונים</p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ═══════════════ CONTENT AREA ═══════════════ -->
+        <section id="contentArea" class="flex-1 flex flex-col bg-slate-100 overflow-hidden opacity-30 pointer-events-none transition-opacity duration-500 relative">
+
+            <!-- ── VIEW 1: UNITS ── -->
+            <div id="view-units" class="flex-1 flex flex-col overflow-hidden absolute inset-0">
+                <div class="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-px bg-slate-300">
+
+                    <!-- RIGHT: Sefer HaBahir (source) -->
+                    <div class="bg-white flex flex-col overflow-hidden">
+                        <div class="p-5 bg-blue-50/80 border-b border-blue-100 flex flex-col justify-center min-h-[96px]">
+                            <div class="flex justify-between items-start">
+                                <div class="flex flex-col items-start gap-1.5">
+                                    <div class="flex items-center gap-2">
+                                        <span id="sourceBookLabel" class="px-2 py-0.5 bg-blue-600 text-white text-[10px] rounded font-bold uppercase tracking-widest">ספר מקור</span>
+                                        <span id="jobId" class="text-[10px] text-slate-400 font-mono">ID: -</span>
+                                    </div>
+                                    <h2 id="currentUnitTitle" class="text-sm font-bold text-blue-800 bg-blue-100/50 border border-blue-200 px-3 py-1.5 rounded-lg font-mono tracking-tight">-</h2>
+                                </div>
+                                <a id="sefariaLink" href="#" target="_blank" class="hidden text-xs bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-1.5 rounded-lg font-bold transition-all shadow-sm items-center gap-2">
+                                    <svg viewBox="0 0 24 24" class="w-4 h-4" fill="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                                    ספריא
+                                </a>
+                            </div>
+                        </div>
+                        <div class="flex-1 p-7 text-xl leading-relaxed text-slate-800 serif-heb text-view whitespace-pre-wrap bg-white" id="sourceText"></div>
+                    </div>
+
+                    <!-- LEFT: Genizah (target + metadata) -->
+                    <div class="bg-slate-50 flex flex-col overflow-hidden">
+                        <!-- Candidate selector header -->
+                        <div class="p-5 bg-amber-50/80 border-b border-amber-100 flex flex-col justify-center min-h-[96px]">
+                            <div class="flex justify-between items-start mb-3">
+                                <div>
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="px-2 py-0.5 bg-amber-600 text-white text-[10px] rounded font-bold uppercase tracking-widest">מקבילות מהגניזה</span>
+                                    </div>
+                                    <h3 class="text-base font-bold text-amber-900 serif-heb">הצעות זיהוי מגניזת קהיר</h3>
+                                </div>
+                                <button id="btnFragmentJump" onclick="navToCurrentFragment()" class="hidden bg-white text-amber-700 hover:bg-amber-600 hover:text-white border border-amber-200 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm items-center gap-2">
+                                    הצג בהקשר המלא
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                                </button>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] font-bold text-slate-500 uppercase flex-shrink-0">בחר מועמד:</span>
+                                <div id="candContainer" class="flex gap-1.5 overflow-x-auto pb-1 flex-1"></div>
+                            </div>
+                        </div>
+
+                        <!-- Meta bar -->
+                        <div id="targetMeta" class="grid grid-cols-3 gap-3 bg-white px-5 py-3 border-b border-slate-200 text-sm shadow-sm z-10">
+                            <div class="flex flex-col">
+                                <span class="text-[10px] text-slate-400 font-bold uppercase mb-1">מזהה גניזה</span>
+                                <div class="flex items-center gap-1.5">
+                                    <span id="metaLoc" class="font-mono text-xs text-blue-600 font-bold break-all leading-none">-</span>
+                                    <span id="metaLocCount" class="hidden bg-indigo-100 text-indigo-800 text-[10px] px-1.5 py-0.5 rounded font-bold whitespace-nowrap border border-indigo-200"></span>
+                                </div>
+                            </div>
+                            <div class="flex flex-col"><span id="metaScoreLabel" class="text-[10px] text-slate-400 font-bold uppercase">ציון התאמה</span><span id="metaScore" class="text-lg font-bold text-emerald-600 leading-none">-</span></div>
+                            <div class="flex flex-col"><span class="text-[10px] text-slate-400 font-bold uppercase">סוג זיהוי</span><span id="metaType" class="font-bold text-slate-700 text-xs">-</span></div>
+                        </div>
+
+                        <!-- Inner tabs: Text | Metadata -->
+                        <div class="flex bg-amber-50/60 border-b border-amber-100">
+                            <button id="innerTab-text" onclick="switchInnerTab('text')" class="px-5 py-2 text-xs font-bold transition-all inner-tab-active">טקסט הגניזה</button>
+                            <button id="innerTab-meta" onclick="switchInnerTab('meta')" class="px-5 py-2 text-xs font-bold transition-all inner-tab-inactive flex items-center gap-1.5">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                פרטי מטה-דאטה
+                                <span id="metaBadge" class="hidden bg-teal-500 text-white text-[9px] px-1.5 py-0.5 rounded-full font-bold">✓</span>
+                            </button>
+                        </div>
+
+                        <!-- Genizah text view -->
+                        <div id="innerView-text" class="flex-1 p-7 text-xl leading-relaxed text-slate-800 serif-heb text-view whitespace-pre-wrap bg-slate-50/50"></div>
+
+                        <!-- Metadata view (hidden by default) -->
+                        <div id="innerView-meta" class="hidden flex-1 overflow-y-auto p-5 meta-panel">
+                            <div id="unitMetaPanel" class="text-sm text-teal-700 italic">טען את קובץ המטה-דאטה לצפייה בפרטים.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── VIEW 2: FRAGMENTS ── -->
+            <div id="view-fragments" class="hidden flex-1 flex flex-col overflow-hidden absolute inset-0 bg-slate-50">
+                <div class="bg-white border-b border-slate-200 p-5 shadow-sm flex flex-col gap-3">
+                    <div class="flex justify-between items-end">
+                        <div>
+                            <h2 class="text-xl font-bold text-slate-800 serif-heb">מקבצי גניזה</h2>
+                            <p class="text-xs text-slate-500 mt-0.5">דפי גניזה המכילים מספר מקבילות לספר המקור</p>
+                        </div>
+                        <div id="fragStatsBadge" class="bg-blue-100 text-blue-800 px-4 py-2 rounded-xl text-sm font-bold border border-blue-200">0 דפי גניזה</div>
+                    </div>
+                    <div class="flex flex-wrap gap-3 items-center bg-slate-50 p-3 rounded-xl border border-slate-200">
+                        <div class="flex-1 relative min-w-[260px]">
+                            <input type="text" id="fragSearch" placeholder="חיפוש חופשי (מזהה, כותרת, מוסד...)" class="w-full pl-9 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 shadow-sm">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute left-2.5 top-2.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                        </div>
+                        <div id="fragDatasetFilterBar" class="hidden flex gap-1 flex-wrap"></div>
+                        <div class="flex gap-2">
+                            <button onclick="sortFragments('count')" id="sortCountBtn" class="px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold shadow-md">מיין לפי כמות</button>
+                            <button onclick="sortFragments('id')" id="sortIdBtn" class="px-4 py-2 bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 rounded-lg text-xs font-bold shadow-sm">מיון אלפביתי</button>
+                            <button onclick="resetFragments()" class="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg text-xs font-bold ml-2">נקה סינונים</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto p-6">
+                    <div id="fragmentsList" class="max-w-5xl mx-auto space-y-5"></div>
+                </div>
+            </div>
+
+            <!-- ── VIEW 3: DISTANT READING ── -->
+            <div id="view-distant" class="hidden flex-1 flex flex-col overflow-hidden absolute inset-0 bg-slate-900 text-white">
+                <div class="p-6 border-b border-slate-800 bg-slate-900 shadow-xl z-10 flex justify-between items-end">
+                    <div class="max-w-3xl">
+                        <h2 class="text-2xl font-bold text-white serif-heb mb-1" id="skylineTitle">מבט-על: פריסת ספר המקור</h2>
+                        <p class="text-slate-400 text-xs leading-relaxed">ויזואליזציה המציגה את פיזור המקבילות לאורך ציר ספר המקור. גובה וצבע כל עמודה מייצגים את ציון ההתאמה המקסימלי. לחץ על עמודה לחקירה מעמיקה.</p>
+                    </div>
+                    <div class="flex items-center gap-3 bg-slate-800 p-3 rounded-xl border border-slate-700">
+                        <span class="text-xs font-bold uppercase text-slate-400">זום:</span>
+                        <input type="range" id="drZoom" min="4" max="40" step="2" value="12" class="w-36 accent-blue-500">
+                    </div>
+                </div>
+                <div class="flex-1 flex flex-col p-6 overflow-hidden">
+                    <div class="flex justify-center gap-6 items-center mb-4">
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]"></div><span class="text-xs text-slate-300">גבוה (0.8+)</span></div>
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.8)]"></div><span class="text-xs text-slate-300">בינוני (0.4+)</span></div>
+                        <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-slate-600"></div><span class="text-xs text-slate-400">נמוך (0–0.4)</span></div>
+                    </div>
+                    <div class="skyline-container" id="skylineContainer"></div>
+                </div>
+            </div>
+
+            <!-- ── VIEW 4: SEARCH & ANALYSIS ── -->
+            <div id="view-search" class="hidden flex-1 flex flex-col overflow-hidden absolute inset-0 bg-slate-50">
+                <!-- Search controls -->
+                <div class="bg-white border-b border-slate-200 p-4 shadow-sm">
+                    <div class="max-w-6xl mx-auto">
+                        <div class="flex gap-3 items-end flex-wrap mb-3">
+                            <!-- Mode tabs -->
+                            <div class="flex bg-slate-100 rounded-xl p-1 gap-1 border border-slate-200">
+                                <button id="searchModeBtn-search" onclick="setSearchMode('search')" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-white shadow-sm text-purple-700 transition-all">חיפוש</button>
+                                <button id="searchModeBtn-analysis" onclick="setSearchMode('analysis')" class="px-4 py-1.5 rounded-lg text-xs font-bold text-slate-500 transition-all">ניתוח וסטטיסטיקה</button>
+                            </div>
+                        </div>
+
+                        <!-- Search form -->
+                        <div id="searchForm" class="flex flex-wrap gap-3 items-end">
+                            <div class="flex-1 relative min-w-[240px]">
+                                <input type="text" id="searchInput" placeholder="חיפוש חופשי בנתוני הגניזה..." class="w-full pl-9 pr-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white transition-all" oninput="runSearch()">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute left-2.5 top-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                            </div>
+                            <div class="flex flex-col">
+                                <label class="text-[10px] font-bold text-slate-400 uppercase mb-1">חפש ב</label>
+                                <select id="searchField" onchange="runSearch()" class="px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-purple-400 shadow-sm">
+                                    <option value="all">כל השדות</option>
+                                    <option value="title">כותרת</option>
+                                    <option value="notes">הערות כלליות</option>
+                                    <option value="bibliography">ביבליוגרפיה</option>
+                                    <option value="subject">נושאים</option>
+                                    <option value="owner">מוסד מחזיק</option>
+                                </select>
+                            </div>
+                            <div class="flex flex-col">
+                                <label class="text-[10px] font-bold text-slate-400 uppercase mb-1">שפה</label>
+                                <select id="langFilter" onchange="runSearch()" class="px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-purple-400 shadow-sm min-w-[120px]">
+                                    <option value="">כל השפות</option>
+                                </select>
+                            </div>
+                            <div class="flex flex-col">
+                                <label class="text-[10px] font-bold text-slate-400 uppercase mb-1">מוסד</label>
+                                <select id="ownerFilter" onchange="runSearch()" class="px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-purple-400 shadow-sm min-w-[180px]">
+                                    <option value="">כל המוסדות</option>
+                                </select>
+                            </div>
+                            <div class="flex flex-col">
+                                <label class="text-[10px] font-bold text-slate-400 uppercase mb-1">הקבלות</label>
+                                <select id="matchFilter" onchange="runSearch()" class="px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-purple-400 shadow-sm">
+                                    <option value="all">הכל</option>
+                                    <option value="with">עם הקבלה בבהיר</option>
+                                    <option value="without">ללא הקבלה</option>
+                                </select>
+                            </div>
+                            <div class="flex flex-col">
+                                <label class="text-[10px] font-bold text-slate-400 uppercase mb-1">ציון מינ׳</label>
+                                <input type="number" id="searchMinScore" value="0" min="0" max="1" step="0.05" oninput="runSearch()" class="w-20 px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-purple-400 shadow-sm">
+                            </div>
+                            <button onclick="clearSearch()" class="px-4 py-2 text-red-500 hover:bg-red-50 rounded-lg text-xs font-bold transition-all">נקה</button>
+                        </div>
+
+                        <!-- Stats bar -->
+                        <div id="searchStatsBar" class="flex gap-2 items-center mt-3 flex-wrap"></div>
+                    </div>
+                </div>
+
+                <!-- Search results / Analysis content -->
+                <div class="flex-1 overflow-y-auto p-5">
+                    <div class="max-w-6xl mx-auto">
+                        <div id="searchResults"></div>
+                        <div id="analysisContent" class="hidden"></div>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <script>
+    // ═══════════════════════════════════════════
+    //  UTILS
+    // ═══════════════════════════════════════════
+    function getHtmlStr(data) {
+        if (!data) return '';
+        if (typeof data === 'string') return data;
+        if (Array.isArray(data)) return data.map(item => (typeof item === 'string' ? item : (typeof item === 'object' ? item.text || item.html || JSON.stringify(item) : String(item)))).join(' ');
+        if (typeof data === 'object') return data.text || data.html || JSON.stringify(data);
+        return String(data);
+    }
+
+    function extractNum(str) {
+        if (!str) return 0;
+        const parts = str.split('__');
+        if (parts.length >= 2) {
+            const ref = parts[parts.length - 1];
+            const nums = ref.match(/\d+/g);
+            if (nums && nums.length >= 2) return parseInt(nums[0]) * 10000 + parseInt(nums[1]);
+            if (nums && nums.length === 1) return parseInt(nums[0]);
+        }
+        const first = str.match(/\d+/);
+        return first ? parseInt(first[0], 10) : 0;
+    }
+
+    // ═══════════════════════════════════════════
+    //  UNIT LABEL & SEFARIA LINK HELPERS
+    // ═══════════════════════════════════════════
+    const PARASHA_HE_MAP = {
+        Bereshit:'בראשית', Noach:'נח', Lech_Lecha:'לך לך', Vayera:'וירא', Chayei_Sara:'חיי שרה',
+        Toldot:'תולדות', Vayetzei:'ויצא', Vayishlach:'וישלח', Vayeshev:'וישב', Miketz:'מקץ',
+        Vayigash:'ויגש', Vayechi:'ויחי', Shemot:'שמות', Vaera:'וארא', Bo:'בא',
+        Beshalach:'בשלח', Yitro:'יתרו', Mishpatim:'משפטים', Terumah:'תרומה', Tetzaveh:'תצוה',
+        Ki_Tisa:'כי תשא', Vayakhel:'ויקהל', Pekudei:'פקודי', Vayikra:'ויקרא', Tzav:'צו',
+        Shemini:'שמיני', Tazria:'תזריע', Metzora:'מצורע', Acharei_Mot:'אחרי מות',
+        Kedoshim:'קדושים', Emor:'אמור', Behar:'בהר', Bechukotai:'בחקתי', Bamidbar:'במדבר',
+        Nasso:'נשא', Behaalotcha:'בהעלותך', Shelach:'שלח', Korach:'קרח', Chukat:'חקת',
+        Balak:'בלק', Pinchas:'פנחס', Matot:'מטות', Masei:'מסעי', Devarim:'דברים',
+        Vaetchanan:'ואתחנן', Eikev:'עקב', Reeh:'ראה', Shoftim:'שופטים', Ki_Teitzei:'כי תצא',
+        Ki_Tavo:'כי תבוא', Nitzavim:'נצבים', Vayeilech:'וילך', Haazinu:'האזינו',
+        VZot_HaBerachah:'וזאת הברכה',
+    };
+
+    function formatUnitLabel(key) {
+        if (!key) return '-';
+        const parts = key.split('__');
+        if (parts.length < 2) {
+            const m = key.match(/__?(\d+)/);
+            return m ? `§${m[1]}` : key.slice(-20);
+        }
+        const bookPath = parts[0];
+        const ref = parts.slice(1).join('__');
+
+        if (bookPath.includes('Devarim_Rabbah')) {
+            const m = ref.match(/^(\d+)_(\d+)$/);
+            if (m) return unitLabelMode === 'section_only' ? `פרק ${m[1]}` : `${m[1]}:${m[2]}`;
+            const m1 = ref.match(/^(\d+)$/);
+            if (m1) return `פרק ${m1[1]}`;
+        } else if (bookPath.includes('Tanchuma_Buber')) {
+            const m = ref.match(/^([A-Za-z]+(?:_[A-Za-z]+)*)_(\d+)_(\d+)$/);
+            if (m) {
+                const he = PARASHA_HE_MAP[m[1]] || m[1].replace(/_/g, ' ');
+                return unitLabelMode === 'section_only' ? `${he} ${m[2]}` : `${he} ${m[2]}:${m[3]}`;
+            }
+            const m2 = ref.match(/^([A-Za-z]+(?:_[A-Za-z]+)*)_(\d+)$/);
+            if (m2) return `${PARASHA_HE_MAP[m2[1]] || m2[1].replace(/_/g, ' ')} ${m2[2]}`;
+        } else if (bookPath.includes('Otzar_Midrashim') || ref.startsWith('Midrash_Tanchuma')) {
+            const m = ref.match(/(\d+)$/);
+            if (m) return unitLabelMode === 'section_only' ? `סעיף ${m[1]}` : `תנחומא ${m[1]}`;
+        }
+        // Generic fallback
+        const nums = ref.match(/\d+/g);
+        if (nums && nums.length >= 2) return unitLabelMode === 'section_only' ? nums[0] : `${nums[0]}:${nums[1]}`;
+        if (nums) return nums[0];
+        return ref.replace(/_/g, ' ').slice(0, 25);
+    }
+
+    function buildSefariaLink(key) {
+        if (!key) return null;
+        const parts = key.split('__');
+        if (parts.length < 2) return null;
+        const bookPath = parts[0];
+        const ref = parts.slice(1).join('__');
+
+        if (bookPath.includes('Devarim_Rabbah')) {
+            const m = ref.match(/^(\d+)_(\d+)$/);
+            if (m) return `https://www.sefaria.org.il/Devarim_Rabbah.${m[1]}.${m[2]}`;
+            const m1 = ref.match(/^(\d+)$/);
+            if (m1) return `https://www.sefaria.org.il/Devarim_Rabbah.${m1[1]}`;
+        } else if (bookPath.includes('Tanchuma_Buber')) {
+            const m = ref.match(/^([A-Za-z]+(?:_[A-Za-z]+)*)_(\d+)_(\d+)$/);
+            if (m) return `https://www.sefaria.org.il/Midrash_Tanchuma_Buber,_${m[1]}.${m[2]}.${m[3]}`;
+            const m2 = ref.match(/^([A-Za-z]+(?:_[A-Za-z]+)*)_(\d+)$/);
+            if (m2) return `https://www.sefaria.org.il/Midrash_Tanchuma_Buber,_${m2[1]}.${m2[2]}`;
+        } else if (bookPath.includes('Otzar_Midrashim') || ref.startsWith('Midrash_Tanchuma')) {
+            return `https://www.sefaria.org.il/Midrash_Tanchuma`;
+        }
+        return null;
+    }
+
+    function getBookLabel() {
+        if (activeDatasetIdx >= 0 && allDatasets[activeDatasetIdx]) return allDatasets[activeDatasetIdx].label;
+        return 'ספר מקור';
+    }
+
+    function getScore(c) {
+        const val = c[activeMetric];
+        if (val != null && !isNaN(val)) return val;
+        return c.alignment_score ?? c.norm_score ?? c.score ?? 0;
+    }
+
+    // Returns true if this candidate's alignment_details was a throttled API error (HTTP 429)
+    function isThrottled(cand) {
+        const ad = cand.alignment_details || cand.reuse_details || {};
+        return ad && typeof ad === 'object' && !Array.isArray(ad)
+            && (ad.status_code === 429 || ad.status_code === '429');
+    }
+
+    function extractText(cand, item, type) {
+        let details = cand.alignment_details || cand.reuse_details || cand.details || {};
+        if (typeof details === 'string') { try { details = JSON.parse(details); } catch(e) { details = {}; } }
+        if (Array.isArray(details)) details = details[0] || {};
+
+        // Detect HTTP 429 rate-limit error stored in alignment_details
+        if (details.status_code === 429 || details.status_code === '429') {
+            return `<div class="flex flex-col items-center justify-center py-8 text-center gap-3">
+                <div class="bg-orange-100 border border-orange-300 rounded-xl p-4 max-w-sm">
+                    <div class="text-2xl mb-2">⏱️</div>
+                    <div class="font-bold text-orange-800 text-sm mb-1">טקסט לא נטען — Rate Limit (429)</div>
+                    <div class="text-orange-700 text-xs leading-relaxed">כשנאספו הנתונים, ה-API הגביל את הבקשות (<em>throttling</em>). המידע הסטטיסטי (ציון ההתאמה, מזהה הגניזה) תקין, אך הטקסט עצמו לא חולץ. יש לבקש מחדש את נתוני ה-alignment לקטע זה.</div>
+                </div>
+            </div>`;
+        }
+
+        let htmlData = details[`${type}_html`] || cand[`${type}_html`];
+        let textData = details[`${type}_text`] || cand[`${type}_text`] || details[type] || cand[type];
+        let res = getHtmlStr(htmlData);
+        if (!res || res.trim() === '') res = getHtmlStr(textData);
+        if ((!res || res.trim() === '') && type === 'passage') res = getHtmlStr(item.passage_html || item.text || item.passage_text || item.Habahir_text);
+        if ((!res || res.trim() === '') && type === 'source') res = getHtmlStr(details.suspect_html || cand.suspect_html || details.target_html || cand.target_html);
+        return (res && res.trim() !== '') ? res : `<span class="text-slate-400 italic text-sm">טקסט לא נמצא במבנה הנתונים</span>`;
+    }
+
+    // Language code → Hebrew name
+    const LANG_MAP = { heb:'עברית', arc:'ארמית', jrb:'יהודית-ערבית', arb:'ערבית', ara:'ערבית', yid:'יידיש', lad:'לאדינו', gre:'יוונית', lat:'לטינית', per:'פרסית', grk:'יוונית', cop:'קופטית', syr:'סורית' };
+
+    function langDisplay(langStr) {
+        if (!langStr) return '';
+        return langStr.split('|').map(l => LANG_MAP[l.trim()] || l.trim()).filter(Boolean).join(' | ');
+    }
+
+    // ═══════════════════════════════════════════
+    //  STATE
+    // ═══════════════════════════════════════════
+    let rawData = {};
+    let enrichedData = null;
+    let fragments = {};
+    let orderedUnits = [];
+    let currentUnitId = null;
+    let currentCandIdx = 0;
+    let scoreRange = [0, 1];
+    let fragmentSortBy = 'count';
+    let currentSearchMode = 'search';
+    let currentInnerTab = 'text';
+    // Multi-dataset
+    let allDatasets = [];
+    let activeDatasetIdx = -1;
+    let currentDirHandle = null;   // File System Access API directory handle
+    // Metric & label mode
+    let activeMetric = 'alignment_score';
+    let unitLabelMode = 'full';
+    // Performance: virtual sidebar cache
+    let sidebarCache = null;
+    // Fragments dataset filter
+    let fragDatasetFilter = 'all';
+
+    // ═══════════════════════════════════════════
+    //  FILE LOADING — handled by multi-dataset functions below
+    // ═══════════════════════════════════════════
+
+    // ═══════════════════════════════════════════
+    //  METADATA HELPERS
+    // ═══════════════════════════════════════════
+    function getNliId(location) {
+        if (!location) return null;
+        const m = String(location).match(/Geniza_(\d{12,20})/);
+        return m ? m[1] : null;
+    }
+
+    function getFragmentMeta(location) {
+        if (!enrichedData || !location) return null;
+        const id = getNliId(location);
+        return id ? (enrichedData[id] || null) : null;
+    }
+
+    function buildMetaPanelHtml(location) {
+        const md = getFragmentMeta(location);
+        if (!md) {
+            const id = getNliId(location);
+            if (!enrichedData) return `<p class="text-teal-600 text-xs italic text-center py-4">טען את קובץ המטה-דאטה לצפייה בפרטים נוספים על קטע הגניזה.</p>`;
+            return `<p class="text-slate-400 text-xs italic text-center py-4">לא נמצאה רשומה עבור מזהה ${id || 'לא ידוע'}.</p>`;
+        }
+
+        const ld = langDisplay(md.language || '');
+        const ownShort = (md.current_owner || '').split('|')[0].trim();
+
+        const field = (label, value, dir) => value ? `
+            <div class="mb-3">
+                <span class="meta-label">${label}</span>
+                <div class="text-sm text-slate-800 leading-relaxed ${dir ? 'dir-ltr' : ''}" ${dir ? 'dir="ltr"' : ''}>${value}</div>
+            </div>` : '';
+
+        const detailsBlock = (label, value, dir) => value ? `
+            <details class="mb-3">
+                <summary class="meta-label cursor-pointer hover:text-teal-800 select-none">${label} ▶</summary>
+                <div class="mt-1 text-xs text-slate-700 leading-relaxed p-3 bg-teal-50/60 rounded-lg mt-2 ${dir ? '' : ''}" ${dir ? 'dir="ltr"' : ''}>${value}</div>
+            </details>` : '';
+
+        let subjectTags = '';
+        if (md.subject_headings) {
+            const tags = md.subject_headings.split(/[,;|]/).map(s => s.trim()).filter(Boolean);
+            if (tags.length) subjectTags = `
+                <div class="mb-3">
+                    <span class="meta-label">נושאים</span>
+                    <div class="flex flex-wrap gap-1 mt-1">${tags.map(s => `<span class="bg-teal-100 text-teal-800 text-xs px-2 py-0.5 rounded-full border border-teal-200">${s}</span>`).join('')}</div>
+                </div>`;
+        }
+
+        return `
+            <div>
+                <div class="font-bold text-teal-900 text-base serif-heb leading-snug mb-1">${md.title || '—'}</div>
+                ${md.title_alt ? `<div class="text-teal-600 text-xs mb-3 leading-relaxed">${md.title_alt}</div>` : ''}
+
+                <div class="grid grid-cols-2 gap-x-4">
+                    ${field('מוסד מחזיק', ownShort)}
+                    ${field('שיוך / Shelfmark', md.shelfmark || '', true)}
+                    ${field('שפה', ld, true)}
+                    ${field('פורמט דיגיטיזציה', md.digitization_format || '', true)}
+                    ${field('תיאור פיזי', md.physical_description)}
+                    ${field('מספר עמודים', md.page_count)}
+                    ${md.material_and_hand ? field('חומר וכתיבה', md.material_and_hand) : ''}
+                    ${md.script_tradition ? field('מסורת כתיבה', md.script_tradition) : ''}
+                    ${md.former_owner ? field('בעלים קודמים', md.former_owner) : ''}
+                    ${md.copyright_status ? field('זכויות יוצרים', md.copyright_status) : ''}
+                </div>
+
+                ${subjectTags}
+                ${detailsBlock('הערות כלליות', md.general_notes)}
+                ${detailsBlock('קטעים קשורים', md.related_fragments, true)}
+                ${detailsBlock('ביבליוגרפיה', md.bibliography)}
+                ${md.provenance_notes ? detailsBlock('הערות מוצא', md.provenance_notes) : ''}
+
+                <div class="flex flex-wrap gap-2 pt-3 border-t border-teal-200 mt-3">
+                    ${md.friedberg_id ? `<span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-1 rounded font-mono border border-slate-200">Friedberg: ${md.friedberg_id}</span>` : ''}
+                    ${md.nli_id ? `<span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-1 rounded font-mono border border-slate-200">NLI: ${md.nli_id}</span>` : ''}
+                    ${md.nli_ie_id ? `<span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-1 rounded font-mono border border-slate-200" dir="ltr">${md.nli_ie_id}</span>` : ''}
+                    ${md.nli_fl_id ? `<span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-1 rounded font-mono border border-slate-200" dir="ltr">${md.nli_fl_id}</span>` : ''}
+                    ${md.collection_source ? `<div class="text-[10px] text-slate-400 w-full mt-1">${md.collection_source}</div>` : ''}
+                </div>
+            </div>`;
+    }
+
+    function updateUnitMetaPanel(loc) {
+        const panel = document.getElementById('unitMetaPanel');
+        if (panel) panel.innerHTML = buildMetaPanelHtml(loc);
+    }
+
+    function switchInnerTab(tab) {
+        currentInnerTab = tab;
+        const textView = document.getElementById('innerView-text');
+        const metaView = document.getElementById('innerView-meta');
+        const tabText = document.getElementById('innerTab-text');
+        const tabMeta = document.getElementById('innerTab-meta');
+
+        if (tab === 'text') {
+            textView.classList.remove('hidden');
+            metaView.classList.add('hidden');
+            tabText.className = 'px-5 py-2 text-xs font-bold transition-all inner-tab-active';
+            tabMeta.className = 'px-5 py-2 text-xs font-bold transition-all inner-tab-inactive flex items-center gap-1.5';
+        } else {
+            textView.classList.add('hidden');
+            metaView.classList.remove('hidden');
+            tabText.className = 'px-5 py-2 text-xs font-bold transition-all inner-tab-inactive';
+            tabMeta.className = 'px-5 py-2 text-xs font-bold transition-all inner-tab-active flex items-center gap-1.5';
+        }
+    }
+
+    // ═══════════════════════════════════════════
+    //  DATA PROCESSING
+    // ═══════════════════════════════════════════
+    function initData() {
+        fragments = {};
+        sidebarCache = null;
+        orderedUnits = Object.keys(rawData).sort((a, b) => extractNum(a) - extractNum(b) || a.localeCompare(b));
+        let globalMaxScore = 0;
+
+        orderedUnits.forEach(unitId => {
+            const item = rawData[unitId];
+            let cands = item.candidates || item.matches || item.results || [];
+            if (!Array.isArray(cands) && typeof cands === 'object') cands = Object.values(cands);
+            item._cands = cands;
+
+            const isIndexedMode = allDatasets[activeDatasetIdx]?.mode === 'indexed';
+            cands.forEach((cand, idx) => {
+                let s = getScore(cand);
+                if (s > globalMaxScore) globalMaxScore = s;
+                let details = cand.alignment_details || cand.reuse_details || {};
+                const loc = cand.location || details.location || cand.elastic_id || cand.id || `Unknown_${idx}`;
+                if (!fragments[loc]) fragments[loc] = [];
+                fragments[loc].push({
+                    unitId, idx, score: s, throttled: isThrottled(cand),
+                    bahir_html: isIndexedMode ? null : extractText(cand, item, 'passage'),
+                    genizah_html: isIndexedMode ? null : extractText(cand, item, 'source'),
+                    _needsLoad: isIndexedMode
+                });
+            });
+        });
+
+        globalMaxScore = globalMaxScore > 0 ? globalMaxScore : 1;
+        minScoreInput.min = 0; maxScoreInput.min = 0;
+        minScoreInput.max = globalMaxScore; maxScoreInput.max = globalMaxScore;
+        minScoreInput.step = 'any'; maxScoreInput.step = 'any';
+        minScoreInput.value = 0; maxScoreInput.value = globalMaxScore;
+        scoreRange = [0, globalMaxScore];
+
+        document.getElementById('contentArea').classList.remove('opacity-30', 'pointer-events-none');
+        updateSliderTrack();
+        if (orderedUnits.length > 0) selectUnit(orderedUnits[0]);
+        if (enrichedData) buildSearchFilters();
+    }
+
+    // ═══════════════════════════════════════════
+    //  SLIDER
+    // ═══════════════════════════════════════════
+    const minScoreInput = document.getElementById('minScore');
+    const maxScoreInput = document.getElementById('maxScore');
+    const sliderFill = document.getElementById('sliderFill');
+    const rangeLabel = document.getElementById('rangeLabel');
+
+    function updateSliderTrack() {
+        let v1 = parseFloat(minScoreInput.value), v2 = parseFloat(maxScoreInput.value);
+        const maxA = parseFloat(minScoreInput.max) || 1;
+        if (v1 > v2) { let t = v1; v1 = v2; v2 = t; }
+        scoreRange = [v1, v2];
+        rangeLabel.innerText = `${v1.toFixed(2)} – ${v2.toFixed(2)}`;
+        sliderFill.style.left = (v1 / maxA * 100) + '%';
+        sliderFill.style.width = ((v2 - v1) / maxA * 100) + '%';
+        updateUI();
+    }
+
+    function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+    minScoreInput.addEventListener('input', debounce(updateSliderTrack, 80));
+    maxScoreInput.addEventListener('input', debounce(updateSliderTrack, 80));
+
+    function updateUI() {
+        renderSidebar();
+        renderFragments();
+        renderSkyline();
+        if (currentSearchMode === 'search') runSearch();
+        else renderAnalysis();
+    }
+
+    // ═══════════════════════════════════════════
+    //  SIDEBAR
+    // ═══════════════════════════════════════════
+    document.getElementById('sidebarSearch').addEventListener('input', renderSidebar);
+
+    function buildSidebarCache() {
+        sidebarCache = {};
+        orderedUnits.forEach(key => {
+            const item = rawData[key];
+            const maxScore = item._cands?.length ? Math.max(...item._cands.map(c => getScore(c))) : 0;
+            const label = formatUnitLabel(key);
+            const el = document.createElement('div');
+            el.className = 'p-2.5 rounded-xl cursor-pointer border bg-white border-slate-200 hover:border-blue-300';
+            el.dataset.score = maxScore;
+            el.dataset.search = (label + ' ' + key).toLowerCase();
+            el.innerHTML = `
+                <div class="flex justify-between items-center mb-0.5">
+                    <span class="sidebar-label text-sm font-bold text-slate-700 truncate" title="${key}">${label}</span>
+                    <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 mr-1 ${maxScore > 0.8 ? 'bg-emerald-100 text-emerald-700' : maxScore > 0.4 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}">${(maxScore * 100).toFixed(0)}%</span>
+                </div>
+                <div class="text-[10px] text-slate-400">${item._cands ? item._cands.length : 0} מועמדים</div>`;
+            el.onclick = () => selectUnit(key);
+            sidebarCache[key] = el;
+        });
+        const list = document.getElementById('sidebarList');
+        list.innerHTML = '';
+        Object.values(sidebarCache).forEach(el => list.appendChild(el));
+    }
+
+    function renderSidebar() {
+        if (!sidebarCache) buildSidebarCache();
+        const query = document.getElementById('sidebarSearch').value.toLowerCase();
+        const isMinZero = parseFloat(minScoreInput.value) === 0;
+        let visible = 0;
+        Object.entries(sidebarCache).forEach(([key, el]) => {
+            const score = parseFloat(el.dataset.score);
+            const show = (isMinZero || score >= scoreRange[0] - 0.00001)
+                && score <= scoreRange[1] + 0.00001
+                && (!query || el.dataset.search.includes(query));
+            el.style.display = show ? '' : 'none';
+            if (show) visible++;
+            const isActive = currentUnitId === key;
+            if (isActive) {
+                el.className = 'p-2.5 rounded-xl cursor-pointer border bg-blue-50 border-blue-300 shadow-md';
+                el.querySelector('.sidebar-label').className = 'sidebar-label text-sm font-bold text-blue-700 truncate';
+            } else {
+                el.className = 'p-2.5 rounded-xl cursor-pointer border bg-white border-slate-200 hover:border-blue-300';
+                el.querySelector('.sidebar-label').className = 'sidebar-label text-sm font-bold text-slate-700 truncate';
+            }
+        });
+        document.getElementById('sidebarStats').innerText = `מציג ${visible} מתוך ${orderedUnits.length} קטעים`;
+    }
+
+    // ═══════════════════════════════════════════
+    //  VIEW 1: UNIT COMPARISON
+    // ═══════════════════════════════════════════
+    async function selectUnit(id, startCandIdx) {
+        currentUnitId = id;
+        currentCandIdx = 0;
+        renderSidebar();
+        const item = rawData[id];
+        document.getElementById('currentUnitTitle').innerText = formatUnitLabel(id);
+        document.getElementById('jobId').innerText = `JOB: ${item?.job_id || 'N/A'}`;
+
+        const sefLink = document.getElementById('sefariaLink');
+        const sefariaUrl = buildSefariaLink(id);
+        if (sefariaUrl) {
+            sefLink.href = sefariaUrl;
+            sefLink.classList.remove('hidden'); sefLink.classList.add('flex');
+        } else {
+            sefLink.classList.add('hidden'); sefLink.classList.remove('flex');
+        }
+
+        const ds = allDatasets[activeDatasetIdx];
+        const needsLazyLoad = ds?.mode === 'indexed' && !rawData[id]?._hasFullData && ds.unitsDir;
+        if (needsLazyLoad) {
+            const spinner = `<div class="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
+                <div style="width:2rem;height:2rem;border:3px solid #60a5fa;border-top-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite;"></div>
+                <span class="text-sm">טוען נתוני קטע...</span></div>`;
+            document.getElementById('sourceText').innerHTML = spinner;
+            document.getElementById('innerView-text').innerHTML = spinner;
+            renderCandidatesSelector([]);
+            await loadUnitDetail(activeDatasetIdx, id);
+            if (currentUnitId !== id) return; // user clicked another unit while loading
+        }
+
+        renderCandidatesSelector(rawData[id]?._cands || []);
+        displayComparison(startCandIdx !== undefined ? startCandIdx : 0);
+    }
+
+    async function loadUnitDetail(dsIdx, unitId) {
+        const ds = allDatasets[dsIdx];
+        if (!ds || ds.mode !== 'indexed' || !ds.unitsDir) return false;
+        if (rawData[unitId]?._hasFullData) return true;
+        try {
+            const fileHandle = await ds.unitsDir.getFileHandle(unitId + '.json');
+            const file = await fileHandle.getFile();
+            const unitData = JSON.parse(await file.text());
+            let cands = unitData.candidates || unitData.matches || unitData.results || [];
+            if (!Array.isArray(cands) && typeof cands === 'object') cands = Object.values(cands);
+            unitData._cands = cands;
+            unitData._hasFullData = true;
+            // Back-fill text into any existing fragments map entries
+            cands.forEach((cand, idx) => {
+                let details = cand.alignment_details || cand.reuse_details || {};
+                const loc = cand.location || details.location || cand.elastic_id || cand.id || `Unknown_${idx}`;
+                if (fragments[loc]) {
+                    fragments[loc].filter(f => f.unitId === unitId && f.idx === idx).forEach(f => {
+                        f.bahir_html = extractText(cand, unitData, 'passage');
+                        f.genizah_html = extractText(cand, unitData, 'source');
+                        f._needsLoad = false;
+                    });
+                }
+            });
+            rawData[unitId] = unitData;
+            return true;
+        } catch (e) {
+            console.warn('loadUnitDetail failed for', unitId, e);
+            return false;
+        }
+    }
+
+    async function loadAndShowFragmentText(loc, i, unitId, candIdx) {
+        const panelEl = document.getElementById(`textpanels_${loc}_${i}`);
+        if (!panelEl) return;
+        panelEl.innerHTML = `<div class="flex items-center justify-center gap-2 py-4 text-slate-400 text-sm">
+            <div style="width:1.25rem;height:1.25rem;border:2px solid #60a5fa;border-top-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite;"></div>
+            <span>טוען...</span></div>`;
+        const dsIdx = activeDatasetIdx;
+        const ok = await loadUnitDetail(dsIdx, unitId);
+        if (!ok) {
+            panelEl.innerHTML = `<div class="text-red-500 text-sm text-center py-3">שגיאה בטעינת הנתונים</div>`;
+            return;
+        }
+        // Find the updated fragment entry
+        const frag = fragments[loc]?.find(f => f.unitId === unitId && f.idx === candIdx);
+        if (!frag) return;
+        panelEl.innerHTML = `<div class="grid grid-cols-2 gap-5">
+            <div class="p-4 bg-white rounded-xl border border-blue-100 text-sm max-h-48 overflow-y-auto serif-heb leading-relaxed shadow-sm">
+                <div class="text-[10px] uppercase font-bold text-blue-500 mb-2 flex items-center gap-2"><div class="w-2 h-2 bg-blue-500 rounded-full"></div> ספר המקור</div>
+                <div class="whitespace-pre-wrap text-base">${frag.bahir_html || ''}</div>
+            </div>
+            <div class="p-4 bg-white rounded-xl border border-amber-100 text-sm max-h-48 overflow-y-auto serif-heb leading-relaxed shadow-sm">
+                <div class="text-[10px] uppercase font-bold text-amber-500 mb-2 flex items-center gap-2"><div class="w-2 h-2 bg-amber-500 rounded-full"></div> גניזת קהיר</div>
+                <div class="whitespace-pre-wrap text-base">${frag.genizah_html || ''}</div>
+            </div>
+        </div>`;
+    }
+
+    function renderCandidatesSelector(cands) {
+        const container = document.getElementById('candContainer');
+        container.innerHTML = '';
+        if (cands.length === 0) {
+            container.innerHTML = '<span class="text-xs text-slate-400 py-1">לא נמצאו מועמדים.</span>';
+            document.getElementById('btnFragmentJump').classList.add('hidden');
+            return;
+        }
+        cands.forEach((c, i) => {
+            const btn = document.createElement('button');
+            const isActive = currentCandIdx === i;
+            const score = getScore(c).toFixed(2);
+            const throttled = isThrottled(c);
+            btn.className = `px-3 py-1 rounded-full text-xs font-bold border transition-all flex items-center gap-1.5 flex-shrink-0 ${
+                throttled
+                    ? (isActive ? 'bg-orange-400 text-white border-orange-500 shadow-sm' : 'bg-orange-50 text-orange-600 border-orange-300 hover:bg-orange-100')
+                    : (isActive ? 'bg-amber-500 text-white border-amber-600 shadow-sm' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50')
+            }`;
+            btn.title = throttled ? 'טקסט חסר — נחסם ע"י Rate Limit (429) בזמן איסוף הנתונים' : '';
+            btn.innerHTML = `${throttled ? '⏱ ' : ''}אפ׳ ${i + 1} <span class="opacity-75 font-mono text-[10px]">(${score})</span>`;
+            btn.onclick = () => displayComparison(i);
+            container.appendChild(btn);
+        });
+    }
+
+    function displayComparison(idx) {
+        currentCandIdx = idx;
+        const item = rawData[currentUnitId];
+        const cand = item._cands?.[idx];
+        renderCandidatesSelector(item._cands || []);
+
+        const tgtText = document.getElementById('innerView-text');
+        const metaLoc = document.getElementById('metaLoc');
+        const metaLocCount = document.getElementById('metaLocCount');
+        const metaScore = document.getElementById('metaScore');
+        const metaType = document.getElementById('metaType');
+        const jumpBtn = document.getElementById('btnFragmentJump');
+
+        document.getElementById('sourceText').innerHTML = item._cands?.length
+            ? extractText(cand || item._cands[0], item, 'passage')
+            : `<span class="text-slate-400 italic">אין טקסט</span>`;
+
+        if (!cand) {
+            tgtText.innerHTML = '<span class="text-slate-400 italic">אין מועמד נבחר.</span>';
+            metaLoc.innerText = '-'; metaLocCount.classList.add('hidden');
+            metaScore.innerText = '-'; metaType.innerText = '-';
+            jumpBtn.classList.add('hidden');
+            updateUnitMetaPanel(null);
+            return;
+        }
+
+        tgtText.innerHTML = extractText(cand, item, 'source');
+
+        let details = cand.alignment_details || cand.reuse_details || {};
+        const loc = cand.location || details.location || cand.elastic_id || cand.id;
+        metaLoc.innerText = loc || 'N/A'; metaLoc.title = loc || '';
+
+        if (loc && fragments[loc]?.length > 1) {
+            metaLocCount.innerText = `+${fragments[loc].length - 1} נוספים`;
+            metaLocCount.classList.remove('hidden');
+        } else {
+            metaLocCount.classList.add('hidden');
+        }
+
+        metaScore.innerText = getScore(cand).toFixed(4);
+        metaType.innerText = cand.text_reuse_ind ? 'שימוש חוזר (Reuse)' : 'התאמה ישירה';
+
+        if (loc) { jumpBtn.classList.remove('hidden'); jumpBtn.classList.add('flex'); }
+        else { jumpBtn.classList.add('hidden'); jumpBtn.classList.remove('flex'); }
+
+        // Update metadata panel
+        updateUnitMetaPanel(loc);
+    }
+
+    // ═══════════════════════════════════════════
+    //  VIEW 2: FRAGMENTS
+    // ═══════════════════════════════════════════
+    document.getElementById('fragSearch').addEventListener('input', debounce(renderFragments, 180));
+
+    function sortFragments(type) {
+        fragmentSortBy = type;
+        document.getElementById('sortCountBtn').className = type === 'count' ? 'px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold shadow-md' : 'px-4 py-2 bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 rounded-lg text-xs font-bold shadow-sm';
+        document.getElementById('sortIdBtn').className = type === 'id' ? 'px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold shadow-md' : 'px-4 py-2 bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 rounded-lg text-xs font-bold shadow-sm';
+        renderFragments();
+    }
+
+    function resetFragments() { document.getElementById('fragSearch').value = ''; fragDatasetFilter = 'all'; renderFragmentDatasetFilter(); sortFragments('count'); }
+
+    function renderFragmentDatasetFilter() {
+        const bar = document.getElementById('fragDatasetFilterBar');
+        if (!bar) return;
+        if (allDatasets.length <= 1) { bar.classList.add('hidden'); return; }
+        bar.classList.remove('hidden');
+        bar.innerHTML = [{ id: 'all', label: 'הכל' }, ...allDatasets.map((ds, i) => ({ id: String(i), label: ds.label }))].map(opt =>
+            `<button onclick="fragDatasetFilter='${opt.id}'; renderFragmentDatasetFilter(); renderFragments();"
+                class="px-3 py-1 rounded-full text-xs font-bold border ${fragDatasetFilter === opt.id ? 'bg-blue-600 text-white border-blue-700' : 'bg-white text-slate-600 border-slate-300 hover:bg-blue-50'}">${opt.label}</button>`
+        ).join('');
+    }
+
+    function toggleFragmentDetail(id) {
+        const d = document.getElementById('detail_' + id);
+        const i = document.getElementById('icon_' + id);
+        if (d) d.classList.toggle('hidden');
+        if (i) i.classList.toggle('rotate-180');
+    }
+
+    function renderFragments() {
+        const container = document.getElementById('fragmentsList');
+        container.innerHTML = '';
+        const query = document.getElementById('fragSearch').value.toLowerCase();
+
+        let locKeys = Object.keys(fragments).filter(loc => {
+            if (!loc.toLowerCase().includes(query)) {
+                // Also search in metadata if available
+                const md = getFragmentMeta(loc);
+                if (!md) return false;
+                const searchStr = [md.title, md.title_alt, md.current_owner, md.general_notes, md.shelfmark].filter(Boolean).join(' ').toLowerCase();
+                return searchStr.includes(query);
+            }
+            return true;
+        });
+
+        if (fragmentSortBy === 'count') locKeys.sort((a, b) => fragments[b].length - fragments[a].length);
+        else locKeys.sort();
+
+        document.getElementById('fragStatsBadge').innerText = `${locKeys.length} דפי גניזה`;
+
+        if (locKeys.length === 0) {
+            container.innerHTML = '<div class="text-center p-10 text-slate-400 font-bold">לא נמצאו דפי גניזה.</div>';
+            return;
+        }
+
+        locKeys.forEach(loc => {
+            // Apply dataset filter to hits within each fragment
+            let hits = fragments[loc].sort((a, b) => extractNum(a.unitId) - extractNum(b.unitId));
+            if (fragDatasetFilter !== 'all') {
+                const dsIdx = parseInt(fragDatasetFilter, 10);
+                const dsUnits = new Set(Object.keys(allDatasets[dsIdx]?.indexData || allDatasets[dsIdx]?.rawData || {}));
+                hits = hits.filter(h => dsUnits.has(h.unitId));
+            }
+            if (hits.length === 0) return;
+            const md = getFragmentMeta(loc);
+            const card = document.createElement('div');
+            card.className = 'bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4';
+
+            const hitsHtml = hits.map((h, i) => `
+                <div class="border-t border-slate-100 flex flex-col group">
+                    <div class="p-4 flex justify-between items-center hover:bg-slate-50 cursor-pointer" onclick="toggleFragmentDetail('${loc}_${i}')">
+                        <div class="flex items-center gap-3">
+                            <span class="font-bold text-slate-700 group-hover:text-blue-600 transition-colors font-mono text-sm">${formatUnitLabel(h.unitId)}</span>
+                            <span class="text-xs text-slate-400 hidden lg:inline">${h.unitId}</span>
+                            ${h.throttled ? '<span class="text-[10px] bg-orange-100 text-orange-600 border border-orange-200 px-1.5 py-0.5 rounded-full font-bold" title="טקסט חסר — Rate Limit 429">⏱ 429</span>' : ''}
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-xs font-mono font-bold ${h.score > 0.8 ? 'text-emerald-600' : 'text-amber-600'}">${h.score.toFixed(3)}</span>
+                            <span class="text-blue-400 transition-transform duration-300" id="icon_${loc}_${i}">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+                            </span>
+                        </div>
+                    </div>
+                    <div id="detail_${loc}_${i}" class="hidden bg-slate-50 p-5 border-t border-slate-200">
+                        <div id="textpanels_${loc}_${i}" class="mb-4">
+                        ${h._needsLoad
+                            ? `<button onclick="loadAndShowFragmentText('${loc}',${i},'${h.unitId}',${h.idx})" class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-50 border border-blue-200 text-blue-700 font-bold text-sm rounded-xl hover:bg-blue-100 transition-all">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                                טען טקסטים להשוואה
+                               </button>`
+                            : `<div class="grid grid-cols-2 gap-5">
+                                <div class="p-4 bg-white rounded-xl border border-blue-100 text-sm max-h-48 overflow-y-auto serif-heb leading-relaxed shadow-sm">
+                                    <div class="text-[10px] uppercase font-bold text-blue-500 mb-2 flex items-center gap-2"><div class="w-2 h-2 bg-blue-500 rounded-full"></div> ספר המקור</div>
+                                    <div class="whitespace-pre-wrap text-base">${h.bahir_html}</div>
+                                </div>
+                                <div class="p-4 bg-white rounded-xl border border-amber-100 text-sm max-h-48 overflow-y-auto serif-heb leading-relaxed shadow-sm">
+                                    <div class="text-[10px] uppercase font-bold text-amber-500 mb-2 flex items-center gap-2"><div class="w-2 h-2 bg-amber-500 rounded-full"></div> גניזת קהיר</div>
+                                    <div class="whitespace-pre-wrap text-base">${h.genizah_html}</div>
+                                </div>
+                               </div>`
+                        }
+                        </div>
+                        ${md ? `
+                        <details class="border border-teal-200 rounded-xl overflow-hidden">
+                            <summary class="bg-teal-50 px-4 py-2 text-xs font-bold text-teal-700 cursor-pointer hover:bg-teal-100 transition-all flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                פרטי מטה-דאטה של קטע הגניזה
+                            </summary>
+                            <div class="p-4 bg-white text-sm">${buildMetaPanelHtml(loc)}</div>
+                        </details>` : ''}
+                        <div class="mt-3 flex justify-end">
+                            <button onclick="switchView('units'); selectUnit('${h.unitId}', ${h.idx});" class="text-xs bg-white border border-slate-300 text-blue-600 font-bold hover:bg-blue-50 px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-sm">
+                                פתח לחקירה מלאה
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>`).join('');
+
+            const metaHeaderHtml = md ? `
+                <div class="text-teal-300 text-xs mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                    ${md.title ? `<span>${md.title.substring(0, 60)}${md.title.length > 60 ? '…' : ''}</span>` : ''}
+                    ${md.current_owner ? `<span class="opacity-70">${(md.current_owner).split('|')[0].trim()}</span>` : ''}
+                    ${md.language ? `<span class="opacity-70" dir="ltr">${md.language.split('|').map(l => LANG_MAP[l.trim()] || l.trim()).filter(Boolean).join(', ')}</span>` : ''}
+                </div>` : '';
+
+            card.innerHTML = `
+                <div class="bg-slate-800 p-4 flex justify-between items-start">
+                    <div class="flex items-start gap-3">
+                        <div class="bg-amber-500/20 p-2 rounded-lg text-amber-400 flex-shrink-0 mt-0.5">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                        </div>
+                        <div>
+                            <span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest block">מזהה גניזה</span>
+                            <h4 class="text-white font-mono font-bold text-sm" dir="ltr">${loc}</h4>
+                            ${metaHeaderHtml}
+                        </div>
+                    </div>
+                    <div class="bg-white/10 px-3 py-1 rounded-full border border-white/10 flex-shrink-0">
+                        <span class="text-white text-xs font-bold">${hits.length} התאמות</span>
+                    </div>
+                </div>
+                <div>${hitsHtml}</div>`;
+            container.appendChild(card);
+        });
+    }
+
+    // ═══════════════════════════════════════════
+    //  VIEW 3: DISTANT READING
+    // ═══════════════════════════════════════════
+    document.getElementById('drZoom').addEventListener('input', renderSkyline);
+
+    function renderSkyline() {
+        const container = document.getElementById('skylineContainer');
+        container.innerHTML = '';
+        const barWidth = document.getElementById('drZoom').value + 'px';
+        const maxHeight = container.clientHeight - 40;
+        const maxAllowed = parseFloat(maxScoreInput.max) || 1;
+
+        orderedUnits.forEach(unitId => {
+            const item = rawData[unitId];
+            const maxScore = item._cands?.length ? Math.max(...item._cands.map(c => getScore(c))) : 0;
+            const bar = document.createElement('div');
+            bar.className = `skyline-bar ${currentUnitId === unitId ? 'active-bar' : ''}`;
+            bar.style.width = barWidth; bar.style.minWidth = barWidth;
+            const h = 10 + (maxScore / maxAllowed) * (maxHeight - 10);
+            bar.style.height = h + 'px';
+            if (maxScore >= 0.8) bar.style.backgroundColor = '#34d399';
+            else if (maxScore >= 0.4) bar.style.backgroundColor = '#fbbf24';
+            else if (maxScore > 0) bar.style.backgroundColor = '#475569';
+            bar.innerHTML = `<div class="dr-tooltip">${formatUnitLabel(unitId)}<br>Score: ${maxScore.toFixed(3)}</div>`;
+            bar.onclick = () => { selectUnit(unitId); switchView('units'); setTimeout(() => renderSkyline(), 50); };
+            container.appendChild(bar);
+        });
+    }
+
+    // ═══════════════════════════════════════════
+    //  VIEW 4: SEARCH & ANALYSIS
+    // ═══════════════════════════════════════════
+    function buildSearchFilters() {
+        if (!enrichedData) return;
+        const owners = new Set(), langs = new Set();
+        Object.values(enrichedData).forEach(md => {
+            const own = (md.current_owner || '').split('|')[0].trim();
+            if (own) owners.add(own);
+            (md.language || '').split('|').map(l => l.trim()).filter(Boolean).forEach(l => langs.add(l));
+        });
+
+        const ownerSel = document.getElementById('ownerFilter');
+        ownerSel.innerHTML = '<option value="">כל המוסדות</option>';
+        [...owners].sort().forEach(o => { ownerSel.innerHTML += `<option value="${o}">${o}</option>`; });
+
+        const langSel = document.getElementById('langFilter');
+        langSel.innerHTML = '<option value="">כל השפות</option>';
+        [...langs].sort().forEach(l => { langSel.innerHTML += `<option value="${l}">${LANG_MAP[l] || l}</option>`; });
+    }
+
+    function setSearchMode(mode) {
+        currentSearchMode = mode;
+        const searchBtn = document.getElementById('searchModeBtn-search');
+        const analysisBtn = document.getElementById('searchModeBtn-analysis');
+        const form = document.getElementById('searchForm');
+        const statsBar = document.getElementById('searchStatsBar');
+        const results = document.getElementById('searchResults');
+        const analysis = document.getElementById('analysisContent');
+
+        if (mode === 'search') {
+            searchBtn.className = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-white shadow-sm text-purple-700 transition-all';
+            analysisBtn.className = 'px-4 py-1.5 rounded-lg text-xs font-bold text-slate-500 transition-all';
+            form.classList.remove('hidden');
+            statsBar.classList.remove('hidden');
+            results.classList.remove('hidden');
+            analysis.classList.add('hidden');
+            runSearch();
+        } else {
+            analysisBtn.className = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-white shadow-sm text-purple-700 transition-all';
+            searchBtn.className = 'px-4 py-1.5 rounded-lg text-xs font-bold text-slate-500 transition-all';
+            form.classList.add('hidden');
+            statsBar.classList.add('hidden');
+            results.classList.add('hidden');
+            analysis.classList.remove('hidden');
+            renderAnalysis();
+        }
+    }
+
+    function clearSearch() {
+        document.getElementById('searchInput').value = '';
+        document.getElementById('searchField').value = 'all';
+        document.getElementById('langFilter').value = '';
+        document.getElementById('ownerFilter').value = '';
+        document.getElementById('matchFilter').value = 'all';
+        document.getElementById('searchMinScore').value = '0';
+        runSearch();
+    }
+
+    function runSearch() {
+        if (currentSearchMode !== 'search') return;
+        const query = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+        const field = document.getElementById('searchField').value;
+        const ownerFilter = document.getElementById('ownerFilter').value;
+        const langFilter = document.getElementById('langFilter').value;
+        const matchFilter = document.getElementById('matchFilter').value;
+        const minScore = parseFloat(document.getElementById('searchMinScore').value) || 0;
+
+        const container = document.getElementById('searchResults');
+        container.innerHTML = '';
+
+        // Build NLI ID → Habahir matches map
+        const matchedMap = new Map();
+        Object.entries(fragments).forEach(([loc, hits]) => {
+            const nliId = getNliId(loc);
+            if (!nliId) return;
+            const validHits = hits.filter(h => h.score >= minScore);
+            if (!matchedMap.has(nliId)) matchedMap.set(nliId, []);
+            matchedMap.get(nliId).push(...validHits.map(h => ({ ...h, location: loc })));
+        });
+
+        let results = [];
+
+        if (enrichedData) {
+            // Search in enriched data
+            const searchFieldMap = {
+                title: md => md.title || '',
+                notes: md => md.general_notes || '',
+                bibliography: md => md.bibliography || '',
+                subject: md => md.subject_headings || '',
+                owner: md => md.current_owner || '',
+                all: md => [md.title, md.title_alt, md.general_notes, md.bibliography, md.subject_headings, md.current_owner, md.shelfmark].filter(Boolean).join(' ')
+            };
+
+            Object.entries(enrichedData).forEach(([nliId, md]) => {
+                const hasMatch = matchedMap.has(nliId) && matchedMap.get(nliId).length > 0;
+                if (matchFilter === 'with' && !hasMatch) return;
+                if (matchFilter === 'without' && hasMatch) return;
+                if (ownerFilter && !(md.current_owner || '').split('|')[0].trim().includes(ownerFilter)) return;
+                if (langFilter && !(md.language || '').split('|').map(l => l.trim()).includes(langFilter)) return;
+                if (query) {
+                    const target = (searchFieldMap[field] || searchFieldMap.all)(md).toLowerCase();
+                    if (!target.includes(query)) return;
+                }
+                results.push({ nliId, md, matches: matchedMap.get(nliId) || [] });
+            });
+
+            // Also include fragment locations not in enriched data (if no enriched filter active)
+            if (!query && !ownerFilter && !langFilter && matchFilter !== 'without') {
+                Object.entries(fragments).forEach(([loc, hits]) => {
+                    const nliId = getNliId(loc);
+                    if (!nliId || enrichedData[nliId]) return; // skip if already included
+                    const validHits = hits.filter(h => h.score >= minScore);
+                    if (matchFilter === 'with' && validHits.length === 0) return;
+                    results.push({ nliId, md: null, matches: validHits.map(h => ({ ...h, location: loc })), location: loc });
+                });
+            }
+        } else {
+            // No enriched data: search in fragment locations
+            if (matchFilter !== 'without') {
+                Object.entries(fragments).forEach(([loc, hits]) => {
+                    if (query && !loc.toLowerCase().includes(query)) return;
+                    const validHits = hits.filter(h => h.score >= minScore);
+                    if (!validHits.length && matchFilter === 'with') return;
+                    results.push({ nliId: getNliId(loc), md: null, matches: validHits.map(h => ({ ...h, location: loc })), location: loc });
+                });
+            }
+            if (matchFilter === 'without' || matchFilter === 'all') {
+                if (matchFilter === 'without') {
+                    // Habahir passages with no valid matches
+                    orderedUnits.forEach(uid => {
+                        const item = rawData[uid];
+                        const validCands = (item._cands || []).filter(c => getScore(c) >= minScore);
+                        if (validCands.length === 0) {
+                            results.push({ unitId: uid, nliId: null, md: null, matches: [], isHabahirUnit: true });
+                        }
+                    });
+                }
+            }
+        }
+
+        // Sort
+        results.sort((a, b) => b.matches.length - a.matches.length ||
+            (Math.max(0, ...(b.matches.map(m => m.score) || [0]))) - (Math.max(0, ...(a.matches.map(m => m.score) || [0]))));
+
+        const withMatch = results.filter(r => r.matches.length > 0).length;
+        const withoutMatch = results.length - withMatch;
+        document.getElementById('searchStatsBar').innerHTML = `
+            <span class="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-xs font-bold">${results.length.toLocaleString()} תוצאות</span>
+            <span class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-xs font-bold">${withMatch.toLocaleString()} עם הקבלה בבהיר</span>
+            <span class="bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-xs font-bold">${withoutMatch.toLocaleString()} ללא הקבלה</span>
+            ${results.length > 100 ? '<span class="text-slate-400 text-xs">· מוצגות 100 ראשונות</span>' : ''}`;
+
+        if (results.length === 0) {
+            container.innerHTML = '<div class="text-center text-slate-400 p-10 font-bold">לא נמצאו תוצאות. נסה לשנות את הגדרות החיפוש.</div>';
+            return;
+        }
+
+        // Highlight helper
+        function highlight(text, term) {
+            if (!text || !term) return text || '';
+            const re = new RegExp('(' + term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+            return text.replace(re, '<mark class="bg-yellow-200 text-yellow-900 rounded px-0.5">$1</mark>');
+        }
+
+        results.slice(0, 100).forEach(r => {
+            const card = document.createElement('div');
+            const hasMatches = r.matches.length > 0;
+            const ownShort = r.md ? (r.md.current_owner || '').split('|')[0].trim() : '';
+            const ld = r.md ? langDisplay(r.md.language || '') : '';
+            const shelfmark = r.md ? (r.md.shelfmark || '') : '';
+            const titleText = r.md ? r.md.title : (r.location || r.nliId || r.unitId || '');
+            const titleAlt = r.md ? (r.md.title_alt || '') : '';
+
+            // Unique Habahir matches
+            const uniqueUnits = [...new Map(r.matches.map(m => [m.unitId, m])).values()];
+            const topScore = uniqueUnits.length ? Math.max(...uniqueUnits.map(m => m.score)) : 0;
+
+            card.className = `search-card mb-3 ${hasMatches ? 'match-border-has' : 'match-border-none'}`;
+            card.innerHTML = `
+                <div class="p-4">
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="flex-1 min-w-0">
+                            <div class="font-bold text-slate-800 serif-heb text-sm leading-snug">${highlight(titleText, query)}</div>
+                            ${titleAlt ? `<div class="text-xs text-slate-500 mt-0.5 leading-snug">${highlight(titleAlt.substring(0, 120) + (titleAlt.length > 120 ? '…' : ''), query)}</div>` : ''}
+                        </div>
+                        <div class="mr-3 flex flex-col items-end gap-1 flex-shrink-0">
+                            ${hasMatches
+                                ? `<span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">${uniqueUnits.length} קטעי בהיר מקבילים</span>
+                                   <span class="text-[10px] font-mono text-emerald-600">ציון: ${topScore.toFixed(3)}</span>`
+                                : `<span class="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full">ללא הקבלה ידועה</span>`}
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 text-xs text-slate-600 mb-3">
+                        ${ownShort ? `<div><span class="text-slate-400 font-bold uppercase text-[9px]">מוסד: </span>${highlight(ownShort, query)}</div>` : ''}
+                        ${shelfmark ? `<div dir="ltr"><span class="text-slate-400 font-bold uppercase text-[9px]">Shelfmark: </span>${shelfmark}</div>` : ''}
+                        ${ld ? `<div><span class="text-slate-400 font-bold uppercase text-[9px]">שפה: </span>${ld}</div>` : ''}
+                        ${r.nliId ? `<div dir="ltr"><span class="text-slate-400 font-bold uppercase text-[9px]">NLI: </span><span class="font-mono text-blue-600">${r.nliId}</span></div>` : ''}
+                    </div>
+
+                    ${hasMatches ? `
+                        <div class="mb-2">
+                            <div class="text-[10px] text-slate-400 font-bold uppercase mb-1">קטעי מקור מקבילים:</div>
+                            <div class="flex flex-wrap gap-1">
+                                ${uniqueUnits.slice(0, 12).map(m => `
+                                    <button onclick="switchView('units'); selectUnit('${m.unitId}', ${m.idx});"
+                                        class="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full hover:bg-blue-600 hover:text-white transition-all font-bold font-mono"
+                                        title="${m.unitId}">
+                                        ${formatUnitLabel(m.unitId)} <span class="opacity-70">${m.score.toFixed(2)}</span>
+                                    </button>`).join('')}
+                                ${uniqueUnits.length > 12 ? `<span class="text-[10px] text-slate-400 self-center">+${uniqueUnits.length - 12} נוספים</span>` : ''}
+                            </div>
+                        </div>` : ''}
+
+                    ${r.md?.subject_headings ? `
+                        <div class="flex flex-wrap gap-1 mb-2">
+                            ${r.md.subject_headings.split(/[,;|]/).map(s => s.trim()).filter(Boolean).map(s =>
+                                `<span class="bg-teal-50 text-teal-700 border border-teal-200 text-[10px] px-1.5 py-0.5 rounded-full">${highlight(s, query)}</span>`).join('')}
+                        </div>` : ''}
+
+                    ${r.md?.general_notes ? `
+                        <details class="mt-1">
+                            <summary class="text-[10px] text-slate-400 font-bold cursor-pointer hover:text-slate-600 uppercase">הערות ▶</summary>
+                            <div class="mt-1 text-xs text-slate-600 leading-relaxed p-2 bg-slate-50 rounded-lg">${highlight(r.md.general_notes.substring(0, 500) + (r.md.general_notes.length > 500 ? '…' : ''), query)}</div>
+                        </details>` : ''}
+                </div>`;
+            container.appendChild(card);
+        });
+    }
+
+    // ═══════════════════════════════════════════
+    //  ANALYSIS VIEW
+    // ═══════════════════════════════════════════
+    function renderAnalysis() {
+        const content = document.getElementById('analysisContent');
+        const minScore = parseFloat(document.getElementById('searchMinScore').value) || 0;
+
+        if (Object.keys(rawData).length === 0) {
+            content.innerHTML = '<p class="text-slate-400 text-center p-10 font-bold">טען את קובץ הנתונים הראשי לצפייה בניתוח.</p>';
+            return;
+        }
+
+        // Build matched NLI ID map
+        const matchedMap = new Map();
+        Object.entries(fragments).forEach(([loc, hits]) => {
+            const nliId = getNliId(loc);
+            if (!nliId) return;
+            const validHits = hits.filter(h => h.score >= minScore);
+            if (validHits.length) {
+                if (!matchedMap.has(nliId)) matchedMap.set(nliId, []);
+                matchedMap.get(nliId).push(...validHits);
+            }
+        });
+
+        const habahirWith = orderedUnits.filter(uid => (rawData[uid]._cands || []).some(c => getScore(c) >= minScore));
+        const habahirWithout = orderedUnits.filter(uid => !(rawData[uid]._cands || []).some(c => getScore(c) >= minScore));
+        const pctCoverage = orderedUnits.length ? Math.round(habahirWith.length / orderedUnits.length * 100) : 0;
+
+        const ownerCounts = {}, langCounts = {}, subjectCounts = {};
+
+        if (enrichedData) {
+            matchedMap.forEach((hits, nliId) => {
+                const md = enrichedData[nliId];
+                if (!md) return;
+                const own = (md.current_owner || '').split('|')[0].trim();
+                if (own) ownerCounts[own] = (ownerCounts[own] || 0) + 1;
+                (md.language || '').split('|').map(l => l.trim()).filter(Boolean).forEach(l => { langCounts[l] = (langCounts[l] || 0) + 1; });
+                if (md.subject_headings) {
+                    md.subject_headings.split(/[,;|]/).map(s => s.trim()).filter(Boolean).forEach(s => { subjectCounts[s] = (subjectCounts[s] || 0) + 1; });
+                }
+            });
+        }
+
+        const sortedOwners = Object.entries(ownerCounts).sort((a, b) => b[1] - a[1]);
+        const sortedLangs = Object.entries(langCounts).sort((a, b) => b[1] - a[1]);
+        const sortedSubjects = Object.entries(subjectCounts).sort((a, b) => b[1] - a[1]);
+        const maxOwner = sortedOwners[0]?.[1] || 1;
+        const maxLang = sortedLangs[0]?.[1] || 1;
+
+        content.innerHTML = `
+            <!-- Overview cards -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
+                    <div class="text-4xl font-black text-blue-700">${orderedUnits.length}</div>
+                    <div class="text-[10px] text-blue-600 font-bold uppercase mt-1">קטעי ${getBookLabel()}</div>
+                </div>
+                <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+                    <div class="text-4xl font-black text-emerald-700">${habahirWith.length}</div>
+                    <div class="text-[10px] text-emerald-600 font-bold uppercase mt-1">עם הקבלה בגניזה</div>
+                    <div class="text-xs text-emerald-500 font-bold mt-1">${pctCoverage}% כיסוי</div>
+                    <div class="mt-2 stat-bar"><div class="stat-bar-fill bg-emerald-400" style="width:${pctCoverage}%"></div></div>
+                </div>
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
+                    <div class="text-4xl font-black text-slate-500">${habahirWithout.length}</div>
+                    <div class="text-[10px] text-slate-500 font-bold uppercase mt-1">ללא הקבלה</div>
+                </div>
+                <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
+                    <div class="text-4xl font-black text-amber-700">${matchedMap.size}</div>
+                    <div class="text-[10px] text-amber-600 font-bold uppercase mt-1">קטעי גניזה מזוהים</div>
+                </div>
+            </div>
+
+            ${(sortedOwners.length || sortedLangs.length) ? `
+            <!-- Distribution charts -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+                ${sortedOwners.length ? `
+                <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                    <h3 class="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                        <span class="w-3 h-3 bg-blue-500 rounded-full"></span>
+                        מוסדות מחזיקים (קטעים עם הקבלה)
+                    </h3>
+                    <div class="space-y-2.5">
+                        ${sortedOwners.slice(0, 10).map(([own, cnt]) => `
+                            <div>
+                                <div class="flex justify-between text-xs mb-1 text-slate-700">
+                                    <span class="truncate" style="max-width:220px" title="${own}">${own}</span>
+                                    <span class="font-bold font-mono mr-2">${cnt}</span>
+                                </div>
+                                <div class="stat-bar"><div class="stat-bar-fill bg-blue-400" style="width:${(cnt/maxOwner*100).toFixed(0)}%"></div></div>
+                            </div>`).join('')}
+                    </div>
+                </div>` : ''}
+
+                ${sortedLangs.length ? `
+                <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                    <h3 class="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                        <span class="w-3 h-3 bg-teal-500 rounded-full"></span>
+                        שפות (קטעים עם הקבלה)
+                    </h3>
+                    <div class="space-y-2.5">
+                        ${sortedLangs.slice(0, 10).map(([lang, cnt]) => `
+                            <div>
+                                <div class="flex justify-between text-xs mb-1 text-slate-700">
+                                    <span>${LANG_MAP[lang] || lang}</span>
+                                    <span class="font-bold font-mono">${cnt}</span>
+                                </div>
+                                <div class="stat-bar"><div class="stat-bar-fill bg-teal-400" style="width:${(cnt/maxLang*100).toFixed(0)}%"></div></div>
+                            </div>`).join('')}
+                    </div>
+                </div>` : ''}
+            </div>` : (!enrichedData ? `<div class="bg-teal-50 border border-teal-200 rounded-xl p-5 mb-5 text-center text-teal-700 font-bold text-sm">טען את קובץ המטה-דאטה לצפייה בניתוח מוסדות, שפות ונושאים.</div>` : '')}
+
+            ${sortedSubjects.length ? `
+            <!-- Subject headings -->
+            <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm mb-5">
+                <h3 class="font-bold text-slate-700 mb-3">נושאים בקטעי גניזה עם הקבלה בספר המקור</h3>
+                <div class="flex flex-wrap gap-2">
+                    ${sortedSubjects.map(([subj, cnt]) => `
+                        <button onclick="document.getElementById('searchInput').value='${subj.replace(/'/g, "\\'")}'; document.getElementById('searchField').value='subject'; setSearchMode('search'); runSearch();"
+                            class="bg-teal-50 text-teal-800 border border-teal-200 px-3 py-1 rounded-full text-xs font-bold cursor-pointer hover:bg-teal-600 hover:text-white transition-all">
+                            ${subj} <span class="font-mono opacity-70">(${cnt})</span>
+                        </button>`).join('')}
+                </div>
+            </div>` : ''}
+
+            <!-- Habahir passages without matches -->
+            ${habahirWithout.length ? `
+            <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                <h3 class="font-bold text-slate-700 mb-3 flex items-center gap-2">
+                    <span class="w-3 h-3 bg-slate-400 rounded-full"></span>
+                    קטעי ${getBookLabel()} ללא הקבלה ידועה בגניזה (${habahirWithout.length})
+                </h3>
+                <div class="flex flex-wrap gap-1.5 max-h-44 overflow-y-auto">
+                    ${habahirWithout.map(uid => `
+                        <button onclick="selectUnit('${uid}'); switchView('units');"
+                            class="text-[10px] bg-slate-50 text-slate-600 border border-slate-200 px-2 py-1 rounded-full hover:bg-slate-700 hover:text-white transition-all font-mono">
+                            ${formatUnitLabel(uid)}
+                        </button>`).join('')}
+                </div>
+            </div>` : ''}
+
+            <!-- Habahir passages WITH matches, sorted by score -->
+            ${habahirWith.length ? `
+            <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm mt-5">
+                <h3 class="font-bold text-slate-700 mb-3 flex items-center gap-2">
+                    <span class="w-3 h-3 bg-emerald-500 rounded-full"></span>
+                    קטעי ${getBookLabel()} עם ציון התאמה גבוה ביותר
+                </h3>
+                <div class="space-y-1.5 max-h-60 overflow-y-auto">
+                    ${habahirWith
+                        .map(uid => ({ uid, score: Math.max(...(rawData[uid]._cands || []).map(c => getScore(c))) }))
+                        .sort((a, b) => b.score - a.score)
+                        .slice(0, 30)
+                        .map(({ uid, score }) => `
+                            <div class="flex items-center gap-3 py-1 border-b border-slate-50">
+                                <button onclick="selectUnit('${uid}'); switchView('units');"
+                                    class="text-xs font-mono text-blue-600 hover:text-blue-800 font-bold">
+                                    ${formatUnitLabel(uid)}
+                                </button>
+                                <div class="flex-1 stat-bar">
+                                    <div class="stat-bar-fill ${score > 0.8 ? 'bg-emerald-400' : 'bg-amber-400'}" style="width:${(score * 100).toFixed(0)}%"></div>
+                                </div>
+                                <span class="text-xs font-mono font-bold ${score > 0.8 ? 'text-emerald-600' : 'text-amber-600'} flex-shrink-0">${score.toFixed(3)}</span>
+                            </div>`).join('')}
+                </div>
+            </div>` : ''}`;
+    }
+
+    // ═══════════════════════════════════════════
+    //  NAVIGATION
+    // ═══════════════════════════════════════════
+    function switchView(viewName) {
+        ['units', 'fragments', 'distant', 'search'].forEach(v => {
+            const view = document.getElementById('view-' + v);
+            if (view) view.classList.toggle('hidden', v !== viewName);
+        });
+
+        // Sidebar visibility
+        const sidebar = document.getElementById('sidebar');
+        sidebar.style.display = (viewName === 'distant' || viewName === 'search') ? 'none' : 'flex';
+
+        // Tab highlight
+        document.querySelectorAll('nav button').forEach(b => {
+            b.classList.remove('border-blue-600', 'text-blue-800', 'bg-blue-50', 'border-indigo-600', 'text-indigo-800', 'bg-indigo-50', 'border-purple-600', 'text-purple-800', 'bg-purple-50');
+            b.classList.add('border-transparent', 'text-slate-600');
+        });
+
+        const activeTab = document.getElementById('nav-' + viewName);
+        if (activeTab) {
+            activeTab.classList.remove('border-transparent', 'text-slate-600');
+            if (viewName === 'distant') activeTab.classList.add('border-indigo-600', 'text-indigo-800', 'bg-indigo-50');
+            else if (viewName === 'search') activeTab.classList.add('border-purple-600', 'text-purple-800', 'bg-purple-50');
+            else activeTab.classList.add('border-blue-600', 'text-blue-800', 'bg-blue-50');
+        }
+
+        if (viewName === 'distant') renderSkyline();
+        if (viewName === 'search') {
+            if (currentSearchMode === 'search') runSearch();
+            else renderAnalysis();
+        }
+    }
+
+    function navToCurrentFragment() {
+        if (!currentUnitId) return;
+        const item = rawData[currentUnitId];
+        let details = item._cands?.[currentCandIdx]?.alignment_details || item._cands?.[currentCandIdx]?.reuse_details || {};
+        const loc = item._cands?.[currentCandIdx]?.location || details.location || item._cands?.[currentCandIdx]?.elastic_id;
+        if (loc) {
+            document.getElementById('fragSearch').value = loc;
+            sortFragments('count');
+            switchView('fragments');
+        }
+    }
+
+    // ═══════════════════════════════════════════
+    //  MULTI-DATASET: DIRECTORY PICKER & FILE LOADING
+    // ═══════════════════════════════════════════
+    async function openDirectory() {
+        if (!window.showDirectoryPicker) {
+            document.getElementById('multiFileInput').click();
+            return;
+        }
+        try {
+            const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+            currentDirHandle = dirHandle;
+
+            // Scan directory contents
+            const indexFiles = [], gnizahFiles = [], enrichedFiles = [];
+            const unitsDirHandles = {};
+
+            for await (const [name, handle] of dirHandle.entries()) {
+                const nl = name.toLowerCase();
+                if (handle.kind === 'directory' && nl.endsWith('-units')) {
+                    unitsDirHandles[name] = handle;
+                } else if (handle.kind === 'file' && nl.endsWith('.json')) {
+                    if (nl.endsWith('-index.json')) {
+                        indexFiles.push({ name, handle });
+                    } else if (nl.includes('enriched') || nl.includes('meta')) {
+                        enrichedFiles.push({ name, handle });
+                    } else if (nl.includes('gnizah') || nl.includes('gnizha')) {
+                        gnizahFiles.push({ name, handle });
+                    }
+                }
+            }
+
+            if (indexFiles.length === 0 && gnizahFiles.length === 0) {
+                alert('לא נמצאו קבצי JSON בתיקיה.\nהרץ את build_index.py כדי לבנות קבצי אינדקס לביצועים מהירים.');
+                return;
+            }
+
+            if (indexFiles.length > 0) {
+                // ══ FAST PATH: indexed mode ══════════════════════════════
+                // Index files are tiny (~200KB) — loads in milliseconds
+                showLoadBanner('טוען אינדקסים...');
+                for (const { name, handle } of indexFiles.sort((a,b) => a.name.localeCompare(b.name))) {
+                    const file = await handle.getFile();
+                    const indexData = JSON.parse(await file.text());
+                    const baseName = name.replace('-index.json', '');
+                    const label = getBookLabelFromKeys(Object.keys(indexData));
+                    const unitsDir = unitsDirHandles[baseName + '-units'] || null;
+                    if (!unitsDir) console.warn(`לא נמצאה תיקיית יחידות עבור ${baseName}`);
+                    const existing = allDatasets.findIndex(d => d.id === name);
+                    const dataset = { id: name, label, indexData, rawData: null, unitsDir, mode: 'indexed' };
+                    if (existing >= 0) allDatasets[existing] = dataset;
+                    else allDatasets.push(dataset);
+                }
+                hideLoadBanner();
+                renderDatasetTabs();
+                if (allDatasets.length === 1 || activeDatasetIdx < 0) switchDataset(0);
+            } else {
+                // ══ SLOW PATH: full JSON files ════════════════════════════
+                // Consider running build_index.py for better performance
+                showLoadBanner('טוען קבצי JSON... (עשוי לקחת זמן — הרץ build_index.py לביצועים טובים יותר)');
+                const filtered = gnizahFiles.sort((a,b) => a.name.localeCompare(b.name));
+                for (const { name, handle } of filtered) {
+                    const file = await handle.getFile();
+                    await loadComparisonJsonFile(file);
+                }
+                hideLoadBanner();
+            }
+
+            // Metadata files (enriched) loaded regardless of mode
+            // Prefer All_Gnizah_enriched.json as the single genizah metadata source
+            const allGnizahEnriched = enrichedFiles.find(f => f.name.toLowerCase() === 'all_gnizah_enriched.json');
+            const metaFilesToLoad = allGnizahEnriched ? [allGnizahEnriched] : enrichedFiles;
+            for (const { name, handle } of metaFilesToLoad) {
+                const file = await handle.getFile();
+                loadEnrichedJsonFile(file);
+            }
+        } catch (e) {
+            if (e.name !== 'AbortError') { console.error(e); alert('שגיאה בפתיחת התיקיה.'); }
+            hideLoadBanner();
+        }
+    }
+
+    function showLoadBanner(msg) {
+        let b = document.getElementById('loadBanner');
+        if (!b) {
+            b = document.createElement('div');
+            b.id = 'loadBanner';
+            b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#1e40af;color:white;text-align:center;padding:10px 16px;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;';
+            document.body.appendChild(b);
+        }
+        b.innerHTML = `<div style="width:16px;height:16px;border:2px solid white;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div> ${msg}`;
+        b.style.display = 'flex';
+    }
+    function hideLoadBanner() {
+        const b = document.getElementById('loadBanner');
+        if (b) b.style.display = 'none';
+    }
+
+    function getBookLabelFromKeys(keys) {
+        if (!keys || keys.length === 0) return 'ספר מקור';
+        const k = keys[0];
+        if (k.includes('Devarim_Rabbah')) return 'דברים רבה';
+        if (k.includes('Tanchuma_Buber')) return 'מדרש תנחומא (בובר)';
+        if (k.includes('Midrash_Tanchuma') || k.includes('Otzar_Midrashim')) return 'מדרש תנחומא';
+        // Generic: take last part of path before __
+        const m = k.match(/([A-Za-z_]+)__/);
+        if (m) return m[1].split('_').filter(Boolean).join(' ');
+        return 'ספר מקור';
+    }
+
+    function loadComparisonJsonFile(file) {
+        return new Promise(resolve => {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    let parsed = JSON.parse(evt.target.result);
+                    if (Array.isArray(parsed)) {
+                        let merged = {}; parsed.forEach(obj => { if (typeof obj === 'object') Object.assign(merged, obj); }); parsed = merged;
+                    }
+                    const keys = Object.keys(parsed);
+                    const label = getBookLabelFromKeys(keys);
+                    const dsId = file.name;
+                    const existing = allDatasets.findIndex(d => d.id === dsId);
+                    const dataset = { id: dsId, label, rawData: parsed };
+                    if (existing >= 0) allDatasets[existing] = dataset;
+                    else allDatasets.push(dataset);
+                    renderDatasetTabs();
+                    if (allDatasets.length === 1 || activeDatasetIdx < 0) {
+                        switchDataset(0);
+                    }
+                    resolve(true);
+                } catch (e) { alert(`שגיאה בטעינת ${file.name}`); resolve(false); }
+            };
+            reader.readAsText(file);
+        });
+    }
+
+    function loadEnrichedJsonFile(file) {
+        const statusEl = document.getElementById('enrichedJsonStatus');
+        statusEl.textContent = 'טוען...';
+        statusEl.className = 'text-[10px] text-center px-2 py-0.5 rounded-full bg-yellow-200 text-yellow-800 font-bold';
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                enrichedData = JSON.parse(evt.target.result);
+                statusEl.textContent = `נטען ✓ (${Object.keys(enrichedData).length.toLocaleString()} רשומות)`;
+                statusEl.className = 'text-[10px] text-center px-2 py-0.5 rounded-full bg-teal-200 text-teal-800 font-bold';
+                buildSearchFilters();
+                document.getElementById('metaBadge').classList.remove('hidden');
+                if (currentUnitId) {
+                    const cand = rawData[currentUnitId]?._cands?.[currentCandIdx];
+                    if (cand) updateUnitMetaPanel(cand.location || cand.alignment_details?.location || cand.elastic_id);
+                }
+                updateUI();
+            } catch (e) {
+                alert('שגיאה בפענוח קובץ המטה-דאטה.');
+                statusEl.textContent = 'שגיאה';
+                statusEl.className = 'text-[10px] text-center px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-bold';
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    function renderDatasetTabs() {
+        const tabsEl = document.getElementById('datasetTabs');
+        tabsEl.classList.remove('hidden');
+        tabsEl.innerHTML = allDatasets.map((ds, i) => `
+            <button onclick="switchDataset(${i})" id="datasetTab-${i}"
+                class="px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap ${i === activeDatasetIdx ? 'bg-blue-600 text-white shadow' : 'text-slate-300 hover:bg-slate-700'}">
+                ${ds.label}
+            </button>`).join('');
+        renderFragmentDatasetFilter();
+    }
+
+    function switchDataset(idx) {
+        activeDatasetIdx = idx;
+        const ds = allDatasets[idx];
+        if (!ds) return;
+
+        if (ds.mode === 'indexed') {
+            // Use index data for rawData — lightweight, no HTML text yet
+            rawData = {};
+            Object.keys(ds.indexData).forEach(uid => { rawData[uid] = ds.indexData[uid]; });
+        } else {
+            rawData = ds.rawData || {};
+        }
+
+        currentUnitId = null;
+        currentCandIdx = 0;
+        fragments = {};
+        orderedUnits = [];
+        sidebarCache = null;
+        fragDatasetFilter = 'all';
+        renderDatasetTabs();
+        const labelEl = document.getElementById('sourceBookLabel');
+        if (labelEl) labelEl.textContent = ds.label + ' (מקור)';
+        const skyTitle = document.getElementById('skylineTitle');
+        if (skyTitle) skyTitle.textContent = `מבט-על: פריסת ${ds.label}`;
+        initData();
+    }
+
+    async function openSingleFile() {
+        if (window.showOpenFilePicker) {
+            try {
+                const [fh] = await window.showOpenFilePicker({
+                    types: [{ description: 'קובץ JSON', accept: { 'application/json': ['.json'] } }]
+                });
+                const file = await fh.getFile();
+                showLoadBanner('טוען...');
+                const name = file.name;
+                if (name.toLowerCase().endsWith('-index.json')) {
+                    // Index file — also prompt for units directory
+                    const indexData = JSON.parse(await file.text());
+                    const baseName = name.replace(/-index\.json$/i, '');
+                    const label = getBookLabelFromKeys(Object.keys(indexData));
+                    let unitsDir = null;
+                    if (window.showDirectoryPicker) {
+                        try {
+                            if (confirm(`נמצא קובץ אינדקס עבור "${label}".\nכדי לאפשר צפייה בטקסטים, לחץ אישור ובחר את תיקיית ${baseName}-units/`)) {
+                                unitsDir = await window.showDirectoryPicker({ mode: 'read' });
+                            }
+                        } catch(e2) { /* user cancelled */ }
+                    }
+                    hideLoadBanner();
+                    const dataset = { id: name, label, indexData, rawData: null, unitsDir, mode: 'indexed' };
+                    const existing = allDatasets.findIndex(d => d.id === name);
+                    if (existing >= 0) allDatasets[existing] = dataset; else allDatasets.push(dataset);
+                    renderDatasetTabs();
+                    if (activeDatasetIdx < 0) switchDataset(allDatasets.length - 1);
+                } else {
+                    hideLoadBanner();
+                    await loadComparisonJsonFile(file);
+                }
+            } catch(e) {
+                if (e.name !== 'AbortError') alert('שגיאה בפתיחת הקובץ.');
+                hideLoadBanner();
+            }
+        } else {
+            document.getElementById('singleFileInput').click();
+        }
+    }
+
+    // ── multi-file fallback input ──
+    document.getElementById('multiFileInput').addEventListener('change', function(e) {
+        const files = Array.from(e.target.files || []);
+        const promises = files.map(file => {
+            if (file.name.toLowerCase().includes('enriched') || file.name.toLowerCase().includes('meta')) {
+                loadEnrichedJsonFile(file); return Promise.resolve();
+            } else if (file.name.endsWith('.json')) {
+                return loadComparisonJsonFile(file);
+            }
+            return Promise.resolve();
+        });
+        Promise.all(promises);
+        this.value = '';
+    });
+
+    document.getElementById('singleFileInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        showLoadBanner('טוען...');
+        loadComparisonJsonFile(file).then(() => hideLoadBanner());
+        this.value = '';
+    });
+
+    document.getElementById('enrichedJsonInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        loadEnrichedJsonFile(file);
+        this.value = '';
+    });
+
+    // ═══════════════════════════════════════════
+    //  METRIC & LABEL MODE
+    // ═══════════════════════════════════════════
+    function setActiveMetric(metric) {
+        activeMetric = metric;
+        sidebarCache = null;  // force sidebar rebuild with new scores
+        const metricLabels = { alignment_score: 'ציון יישור', norm_score: 'ציון מנורמל', score: 'ציון גלם' };
+        ['alignment_score', 'norm_score', 'score'].forEach(m => {
+            const btn = document.getElementById('metricBtn-' + m);
+            if (btn) btn.className = `px-2 py-1 rounded text-[10px] font-bold ${m === metric ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`;
+        });
+        const lbl = document.getElementById('metaScoreLabel');
+        if (lbl) lbl.textContent = metricLabels[metric] || 'ציון';
+        if (orderedUnits.length > 0) { recalcScoreRange(); updateUI(); }
+    }
+
+    function recalcScoreRange() {
+        let maxScore = 0;
+        orderedUnits.forEach(uid => {
+            const item = rawData[uid];
+            const s = item._cands?.length ? Math.max(0, ...item._cands.map(c => getScore(c))) : 0;
+            if (s > maxScore) maxScore = s;
+        });
+        maxScore = maxScore > 0 ? maxScore : 1;
+        minScoreInput.min = 0; maxScoreInput.min = 0;
+        minScoreInput.max = maxScore; maxScoreInput.max = maxScore;
+        minScoreInput.value = 0; maxScoreInput.value = maxScore;
+        scoreRange = [0, maxScore];
+        updateSliderTrack();
+    }
+
+    function setLabelMode(mode) {
+        unitLabelMode = mode;
+        ['full', 'section_only'].forEach(m => {
+            const btn = document.getElementById('labelModeBtn-' + m);
+            if (btn) btn.className = `px-2 py-0.5 rounded text-[10px] font-bold ${m === mode ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`;
+        });
+        renderSidebar();
+        if (currentUnitId) document.getElementById('currentUnitTitle').innerText = formatUnitLabel(currentUnitId);
+    }
+
+    </script>
+</body>
+</html>
