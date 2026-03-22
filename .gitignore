@@ -1,0 +1,11 @@
+# Data files — too large for Git; users download separately
+*.json
+*-units/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS files
+.DS_Store
+Thumbs.db

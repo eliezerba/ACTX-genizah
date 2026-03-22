@@ -723,7 +723,6 @@
         fragments = {};
         sidebarCache = null;
         orderedUnits = Object.keys(rawData);
-        orderedUnits.sort((a, b) => extractNum(a) - extractNum(b));
         let globalMaxScore = 0;
 
         orderedUnits.forEach(unitId => {
