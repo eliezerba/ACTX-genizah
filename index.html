@@ -657,7 +657,7 @@
     function initData() {
         fragments = {};
         sidebarCache = null;
-        orderedUnits = Object.keys(rawData).sort((a, b) => extractNum(a) - extractNum(b) || a.localeCompare(b));
+        orderedUnits = Object.keys(rawData);
         let globalMaxScore = 0;
 
         orderedUnits.forEach(unitId => {
