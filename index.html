@@ -164,7 +164,7 @@
                 </div>
             </div>
             <div id="sidebarStats" class="text-[10px] text-slate-500 font-bold py-1 px-3 bg-slate-100 border-b border-slate-200 text-center uppercase tracking-wider">מציג 0 קטעים</div>
-            <div id="sidebarList" class="flex-1 overflow-y-auto p-2 space-y-1.5">
+            <div id="sidebarList" class="flex-1 overflow-y-auto p-2 relative">
                 <div class="text-center text-slate-400 mt-10 p-5 border-2 border-dashed border-slate-200 rounded-xl">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mx-auto text-slate-300 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
                     <p class="text-sm font-bold">טען קובץ נתונים</p>
@@ -405,7 +405,7 @@
                 </div>
 
                 <!-- Search results / Analysis content -->
-                <div class="flex-1 overflow-y-auto p-5">
+                <div id="searchScroll" class="flex-1 overflow-y-auto p-5">
                     <div class="max-w-6xl mx-auto">
                         <div id="searchResults"></div>
                         <div id="analysisContent" class="hidden"></div>
@@ -722,10 +722,18 @@
     let unitLabelMode = 'full';
     // Performance: virtual sidebar cache
     let sidebarCache = null;
+    let sidebarFilteredKeys = [];
+    let sidebarRenderRange = { start: 0, end: 0 };
+    const SIDEBAR_ROW_HEIGHT = 60;
     // Performance: avoid rebuilding DR derived data unless needed
     let dr_needsRebuild = true;
     // Performance: avoid re-running search when nothing changed
     let lastSearchKey = null;
+    let searchResultsCache = [];
+    let searchRenderedCount = 0;
+    const SEARCH_PAGE_SIZE = 30;
+    const SEARCH_MAX_RESULTS = 200;
+    let lastSearchQuery = '';
     // Fragments dataset filter
     let fragDatasetFilter = 'all';
 
@@ -879,6 +887,21 @@
         minScoreInput.value = 0; maxScoreInput.value = globalMaxScore;
         scoreRange = [0, globalMaxScore];
 
+        applyProcessedData(globalMaxScore);
+
+        const ds = allDatasets[activeDatasetIdx];
+        if (ds) {
+            ds._cache = ds._cache || {};
+            ds._cache[activeMetric] = { orderedUnits, fragments, maxScore: globalMaxScore };
+        }
+    }
+
+    function applyProcessedData(globalMaxScore) {
+        const maxScore = globalMaxScore > 0 ? globalMaxScore : 1;
+        minScoreInput.min = 0; maxScoreInput.min = 0;
+        minScoreInput.max = maxScore; maxScoreInput.max = maxScore;
+        minScoreInput.value = 0; maxScoreInput.value = maxScore;
+        scoreRange = [0, maxScore];
         document.getElementById('contentArea').classList.remove('opacity-30', 'pointer-events-none');
         updateSliderTrack();
         if (orderedUnits.length > 0) selectUnit(orderedUnits[0]);
@@ -915,8 +938,7 @@
         renderSidebar();
         renderFragments();
         if (currentView === 'distant') {
-            dr_rebuildDerived();
-            dr_renderCurrentTab();
+            if (dr_rebuildDerived()) dr_renderCurrentTab();
         }
         if (currentView === 'search') {
             if (currentSearchMode === 'search') runSearch();
@@ -927,7 +949,9 @@
     // ═══════════════════════════════════════════
     //  SIDEBAR
     // ═══════════════════════════════════════════
-    document.getElementById('sidebarSearch').addEventListener('input', renderSidebar);
+    document.getElementById('sidebarSearch').addEventListener('input', () => renderSidebar(true));
+    const sidebarListEl = document.getElementById('sidebarList');
+    if (sidebarListEl) sidebarListEl.addEventListener('scroll', () => renderSidebarWindow());
 
     function buildSidebarCache() {
         sidebarCache = {};
@@ -937,6 +961,8 @@
             const label = formatUnitLabel(key);
             const el = document.createElement('div');
             el.className = 'p-2.5 rounded-xl cursor-pointer border bg-white border-slate-200 hover:border-blue-300';
+            el.style.marginBottom = '0.375rem';
+            el.style.height = (SIDEBAR_ROW_HEIGHT - 6) + 'px';
             el.dataset.score = maxScore;
             el.dataset.search = (label + ' ' + key).toLowerCase();
             el.innerHTML = `
@@ -948,23 +974,48 @@
             el.onclick = () => selectUnit(key);
             sidebarCache[key] = el;
         });
-        const list = document.getElementById('sidebarList');
-        list.innerHTML = '';
-        Object.values(sidebarCache).forEach(el => list.appendChild(el));
+        sidebarFilteredKeys = orderedUnits.slice();
+        sidebarRenderRange = { start: 0, end: 0 };
     }
 
-    function renderSidebar() {
+    function renderSidebar(resetScroll) {
         if (!sidebarCache) buildSidebarCache();
         const query = document.getElementById('sidebarSearch').value.toLowerCase();
         const isMinZero = parseFloat(minScoreInput.value) === 0;
-        let visible = 0;
+        sidebarFilteredKeys = [];
         Object.entries(sidebarCache).forEach(([key, el]) => {
             const score = parseFloat(el.dataset.score);
             const show = (isMinZero || score >= scoreRange[0] - 0.00001)
                 && score <= scoreRange[1] + 0.00001
                 && (!query || el.dataset.search.includes(query));
-            el.style.display = show ? '' : 'none';
-            if (show) visible++;
+            if (show) sidebarFilteredKeys.push(key);
+        });
+        document.getElementById('sidebarStats').innerText = `מציג ${sidebarFilteredKeys.length} מתוך ${orderedUnits.length} קטעים`;
+        sidebarRenderRange = { start: 0, end: 0 };
+        renderSidebarWindow(!!resetScroll);
+    }
+
+    function renderSidebarWindow(resetScroll) {
+        const list = document.getElementById('sidebarList');
+        if (!list) return;
+        if (resetScroll) list.scrollTop = 0;
+        const total = sidebarFilteredKeys.length;
+        const scrollTop = list.scrollTop;
+        const viewportH = list.clientHeight || 1;
+        const start = Math.max(0, Math.floor(scrollTop / SIDEBAR_ROW_HEIGHT) - 5);
+        const visibleCount = Math.ceil(viewportH / SIDEBAR_ROW_HEIGHT) + 10;
+        const end = Math.min(total, start + visibleCount);
+        if (sidebarRenderRange.start === start && sidebarRenderRange.end === end) return;
+        sidebarRenderRange = { start, end };
+
+        list.innerHTML = '';
+        const top = document.createElement('div');
+        top.style.height = (start * SIDEBAR_ROW_HEIGHT) + 'px';
+        list.appendChild(top);
+        for (let i = start; i < end; i++) {
+            const key = sidebarFilteredKeys[i];
+            const el = sidebarCache[key];
+            if (!el) continue;
             const isActive = currentUnitId === key;
             if (isActive) {
                 el.className = 'p-2.5 rounded-xl cursor-pointer border bg-blue-50 border-blue-300 shadow-md';
@@ -973,8 +1024,11 @@
                 el.className = 'p-2.5 rounded-xl cursor-pointer border bg-white border-slate-200 hover:border-blue-300';
                 el.querySelector('.sidebar-label').className = 'sidebar-label text-sm font-bold text-slate-700 truncate';
             }
-        });
-        document.getElementById('sidebarStats').innerText = `מציג ${visible} מתוך ${orderedUnits.length} קטעים`;
+            list.appendChild(el);
+        }
+        const bottom = document.createElement('div');
+        bottom.style.height = ((total - end) * SIDEBAR_ROW_HEIGHT) + 'px';
+        list.appendChild(bottom);
     }
 
     // ═══════════════════════════════════════════
@@ -1039,6 +1093,8 @@
                 }
             });
             rawData[unitId] = unitData;
+            const dsCache = allDatasets[dsIdx]?._cache?.[activeMetric];
+            if (dsCache) dsCache.fragments = fragments;
             return true;
         } catch (e) {
             console.warn('loadUnitDetail failed for', unitId, e);
@@ -1318,6 +1374,44 @@
     };
     const DR_LANG_MAP = { heb:'עברית', arc:'ארמית', jrb:'יהודית-ערבית', arb:'ערבית', ara:'ערבית', yid:'יידיש', lad:'לאדינו', gre:'יוונית', lat:'לטינית', per:'פרסית' };
 
+    // DR worker (optional)
+    let drWorker = null;
+    let drWorkerBusy = false;
+    let drWorkerReqId = 0;
+    let drWorkerPending = false;
+    let drWorkerDisabled = false;
+    try {
+        drWorker = new Worker('dr-worker.js');
+        drWorker.onmessage = (evt) => {
+            const data = evt.data || {};
+            if (data.reqId !== drWorkerReqId) return; // stale
+            drWorkerBusy = false;
+            dr_allFragments = data.allFragments || {};
+            if (enrichedData) {
+                Object.values(dr_allFragments).forEach(f => { f.meta = enrichedData[f.nliId] || null; });
+            }
+            dr_subjectIndex = {};
+            const subj = data.subjectIndex || {};
+            Object.entries(subj).forEach(([k, arr]) => { dr_subjectIndex[k] = new Set(arr || []); });
+            dr_needsRebuild = false;
+            dr_populateBookFilters();
+            if (currentView === 'distant') dr_renderCurrentTab();
+            if (drWorkerPending) {
+                drWorkerPending = false;
+                dr_needsRebuild = true;
+                dr_rebuildDerived();
+            }
+        };
+        drWorker.onerror = () => {
+            drWorkerDisabled = true;
+            drWorkerBusy = false;
+            drWorker = null;
+            if (dr_needsRebuild) dr_rebuildDerived();
+        };
+    } catch (e) {
+        drWorker = null;
+    }
+
     function dr_getNliId(location) {
         if (!location) return null;
         const m = String(location).match(/Geniza_(\d{12,20})/);
@@ -1355,7 +1449,28 @@
     }
 
     function dr_rebuildDerived() {
-        if (!dr_needsRebuild) return;
+        if (!dr_needsRebuild) return true;
+        if (drWorker && !drWorkerDisabled) {
+            if (drWorkerBusy) {
+                drWorkerPending = true;
+                return false;
+            }
+            drWorkerBusy = true;
+            drWorkerReqId += 1;
+            const datasets = {};
+            for (const [bookName, ds] of Object.entries(dr_datasets)) {
+                datasets[bookName] = ds.indexData || {};
+            }
+            drWorker.postMessage({
+                reqId: drWorkerReqId,
+                datasets,
+                activeMetric,
+                scoreRange,
+                enrichedData: enrichedData || null
+            });
+            return false;
+        }
+
         dr_allFragments = {};
         dr_subjectIndex = {};
         for (const [bookName, ds] of Object.entries(dr_datasets)) {
@@ -1398,6 +1513,7 @@
         }
         dr_needsRebuild = false;
         dr_populateBookFilters();
+        return true;
     }
 
     function dr_populateBookFilters() {
@@ -1668,11 +1784,11 @@
         const ownerFilter = document.getElementById('ownerFilter').value;
         const langFilter = document.getElementById('langFilter').value;
         const minScore = parseFloat(document.getElementById('searchMinScore').value) || 0;
+        const container = document.getElementById('searchResults');
         const searchKey = [query, field, ownerFilter, langFilter, minScore, enrichedData ? '1' : '0'].join('|');
-        if (lastSearchKey === searchKey) return;
+        if (lastSearchKey === searchKey && container && container.childElementCount > 0) return;
         lastSearchKey = searchKey;
 
-        const container = document.getElementById('searchResults');
         container.innerHTML = '';
 
         // Build NLI ID → Habahir matches map
@@ -1736,83 +1852,108 @@
             <span class="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-xs font-bold">${results.length.toLocaleString()} תוצאות</span>
             <span class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-xs font-bold">${withMatch.toLocaleString()} עם התאמות</span>
             <span class="bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-xs font-bold">${withoutMatch.toLocaleString()} ללא התאמות</span>
-            ${results.length > 100 ? '<span class="text-slate-400 text-xs">· מוצגות 100 ראשונות</span>' : ''}`;
+            ${results.length > SEARCH_MAX_RESULTS ? `<span class="text-slate-400 text-xs">· מוצגות ${SEARCH_MAX_RESULTS} ראשונות</span>` : ''}`;
 
         if (results.length === 0) {
             container.innerHTML = '<div class="text-center text-slate-400 p-10 font-bold">לא נמצאו תוצאות. נסה לשנות את הגדרות החיפוש.</div>';
             return;
         }
 
-        // Highlight helper
-        function highlight(text, term) {
-            if (!text || !term) return text || '';
-            const re = new RegExp('(' + term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
-            return text.replace(re, '<mark class="bg-yellow-200 text-yellow-900 rounded px-0.5">$1</mark>');
+        searchResultsCache = results.slice(0, SEARCH_MAX_RESULTS);
+        searchRenderedCount = 0;
+        lastSearchQuery = query;
+        renderSearchChunk(true);
+    }
+
+    function searchHighlight(text, term) {
+        if (!text || !term) return text || '';
+        const re = new RegExp('(' + term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+        return text.replace(re, '<mark class="bg-yellow-200 text-yellow-900 rounded px-0.5">$1</mark>');
+    }
+
+    function buildSearchCard(r, query) {
+        const card = document.createElement('div');
+        const hasMatches = r.matches.length > 0;
+        const ownShort = r.md ? (r.md.current_owner || '').split('|')[0].trim() : '';
+        const ld = r.md ? langDisplay(r.md.language || '') : '';
+        const shelfmark = r.md ? (r.md.shelfmark || '') : '';
+        const titleText = r.md ? r.md.title : (r.location || r.nliId || r.unitId || '');
+        const titleAlt = r.md ? (r.md.title_alt || '') : '';
+        const uniqueUnits = [...new Map(r.matches.map(m => [m.unitId, m])).values()];
+        const topScore = uniqueUnits.length ? Math.max(...uniqueUnits.map(m => m.score)) : 0;
+
+        card.className = `search-card mb-3 ${hasMatches ? 'match-border-has' : 'match-border-none'}`;
+        card.innerHTML = `
+            <div class="p-4">
+                <div class="flex justify-between items-start mb-2">
+                    <div class="flex-1 min-w-0">
+                        <div class="font-bold text-slate-800 serif-heb text-sm leading-snug">${searchHighlight(titleText, query)}</div>
+                        ${titleAlt ? `<div class="text-xs text-slate-500 mt-0.5 leading-snug">${searchHighlight(titleAlt.substring(0, 120) + (titleAlt.length > 120 ? '…' : ''), query)}</div>` : ''}
+                    </div>
+                    <div class="mr-3 flex flex-col items-end gap-1 flex-shrink-0">
+                        ${hasMatches
+                            ? `<span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">${uniqueUnits.length} קטעי מקור מקבילים</span>
+                               <span class="text-[10px] font-mono text-emerald-600">ציון: ${topScore.toFixed(3)}</span>`
+                            : `<span class="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full">ללא התאמה ידועה</span>`}
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 text-xs text-slate-600 mb-3">
+                    ${ownShort ? `<div><span class="text-slate-400 font-bold uppercase text-[9px]">מוסד: </span>${searchHighlight(ownShort, query)}</div>` : ''}
+                    ${shelfmark ? `<div dir="ltr"><span class="text-slate-400 font-bold uppercase text-[9px]">Shelfmark: </span>${shelfmark}</div>` : ''}
+                    ${ld ? `<div><span class="text-slate-400 font-bold uppercase text-[9px]">שפה: </span>${ld}</div>` : ''}
+                    ${r.nliId ? `<div dir="ltr"><span class="text-slate-400 font-bold uppercase text-[9px]">NLI: </span><span class="font-mono text-blue-600">${r.nliId}</span></div>` : ''}
+                </div>
+
+                ${hasMatches ? `
+                    <div class="mb-2">
+                        <div class="text-[10px] text-slate-400 font-bold uppercase mb-1">קטעי מקור מקבילים:</div>
+                        <div class="flex flex-wrap gap-1">
+                            ${uniqueUnits.slice(0, 12).map(m => `
+                                <button onclick="switchView('units'); selectUnit('${m.unitId}', ${m.idx});"
+                                    class="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full hover:bg-blue-600 hover:text-white transition-all font-bold font-mono"
+                                    title="${m.unitId}">
+                                    ${formatUnitLabel(m.unitId)} <span class="opacity-70">${m.score.toFixed(2)}</span>
+                                </button>`).join('')}
+                            ${uniqueUnits.length > 12 ? `<span class="text-[10px] text-slate-400 self-center">+${uniqueUnits.length - 12} נוספים</span>` : ''}
+                        </div>
+                    </div>` : ''}
+
+                ${r.md?.subject_headings ? `
+                    <div class="flex flex-wrap gap-1 mb-2">
+                        ${r.md.subject_headings.split(/[,;|]/).map(s => s.trim()).filter(Boolean).map(s =>
+                            `<span class="bg-teal-50 text-teal-700 border border-teal-200 text-[10px] px-1.5 py-0.5 rounded-full">${searchHighlight(s, query)}</span>`).join('')}
+                    </div>` : ''}
+
+                ${r.md?.general_notes ? `
+                    <details class="mt-1">
+                        <summary class="text-[10px] text-slate-400 font-bold cursor-pointer hover:text-slate-600 uppercase">הערות ▶</summary>
+                        <div class="mt-1 text-xs text-slate-600 leading-relaxed p-2 bg-slate-50 rounded-lg">${searchHighlight(r.md.general_notes.substring(0, 500) + (r.md.general_notes.length > 500 ? '…' : ''), query)}</div>
+                    </details>` : ''}
+            </div>`;
+        return card;
+    }
+
+    function renderSearchChunk(reset) {
+        const container = document.getElementById('searchResults');
+        if (!container) return;
+        if (reset) {
+            container.innerHTML = '';
+            searchRenderedCount = 0;
+            if (searchScrollEl) searchScrollEl.scrollTop = 0;
         }
+        const next = searchResultsCache.slice(searchRenderedCount, searchRenderedCount + SEARCH_PAGE_SIZE);
+        next.forEach(r => container.appendChild(buildSearchCard(r, lastSearchQuery)));
+        searchRenderedCount += next.length;
+    }
 
-        results.slice(0, 100).forEach(r => {
-            const card = document.createElement('div');
-            const hasMatches = r.matches.length > 0;
-            const ownShort = r.md ? (r.md.current_owner || '').split('|')[0].trim() : '';
-            const ld = r.md ? langDisplay(r.md.language || '') : '';
-            const shelfmark = r.md ? (r.md.shelfmark || '') : '';
-            const titleText = r.md ? r.md.title : (r.location || r.nliId || r.unitId || '');
-            const titleAlt = r.md ? (r.md.title_alt || '') : '';
-
-            // Unique Habahir matches
-            const uniqueUnits = [...new Map(r.matches.map(m => [m.unitId, m])).values()];
-            const topScore = uniqueUnits.length ? Math.max(...uniqueUnits.map(m => m.score)) : 0;
-
-            card.className = `search-card mb-3 ${hasMatches ? 'match-border-has' : 'match-border-none'}`;
-            card.innerHTML = `
-                <div class="p-4">
-                    <div class="flex justify-between items-start mb-2">
-                        <div class="flex-1 min-w-0">
-                            <div class="font-bold text-slate-800 serif-heb text-sm leading-snug">${highlight(titleText, query)}</div>
-                            ${titleAlt ? `<div class="text-xs text-slate-500 mt-0.5 leading-snug">${highlight(titleAlt.substring(0, 120) + (titleAlt.length > 120 ? '…' : ''), query)}</div>` : ''}
-                        </div>
-                        <div class="mr-3 flex flex-col items-end gap-1 flex-shrink-0">
-                            ${hasMatches
-                                ? `<span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">${uniqueUnits.length} קטעי מקור מקבילים</span>
-                                   <span class="text-[10px] font-mono text-emerald-600">ציון: ${topScore.toFixed(3)}</span>`
-                                : `<span class="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full">ללא התאמה ידועה</span>`}
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 text-xs text-slate-600 mb-3">
-                        ${ownShort ? `<div><span class="text-slate-400 font-bold uppercase text-[9px]">מוסד: </span>${highlight(ownShort, query)}</div>` : ''}
-                        ${shelfmark ? `<div dir="ltr"><span class="text-slate-400 font-bold uppercase text-[9px]">Shelfmark: </span>${shelfmark}</div>` : ''}
-                        ${ld ? `<div><span class="text-slate-400 font-bold uppercase text-[9px]">שפה: </span>${ld}</div>` : ''}
-                        ${r.nliId ? `<div dir="ltr"><span class="text-slate-400 font-bold uppercase text-[9px]">NLI: </span><span class="font-mono text-blue-600">${r.nliId}</span></div>` : ''}
-                    </div>
-
-                    ${hasMatches ? `
-                        <div class="mb-2">
-                            <div class="text-[10px] text-slate-400 font-bold uppercase mb-1">קטעי מקור מקבילים:</div>
-                            <div class="flex flex-wrap gap-1">
-                                ${uniqueUnits.slice(0, 12).map(m => `
-                                    <button onclick="switchView('units'); selectUnit('${m.unitId}', ${m.idx});"
-                                        class="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full hover:bg-blue-600 hover:text-white transition-all font-bold font-mono"
-                                        title="${m.unitId}">
-                                        ${formatUnitLabel(m.unitId)} <span class="opacity-70">${m.score.toFixed(2)}</span>
-                                    </button>`).join('')}
-                                ${uniqueUnits.length > 12 ? `<span class="text-[10px] text-slate-400 self-center">+${uniqueUnits.length - 12} נוספים</span>` : ''}
-                            </div>
-                        </div>` : ''}
-
-                    ${r.md?.subject_headings ? `
-                        <div class="flex flex-wrap gap-1 mb-2">
-                            ${r.md.subject_headings.split(/[,;|]/).map(s => s.trim()).filter(Boolean).map(s =>
-                                `<span class="bg-teal-50 text-teal-700 border border-teal-200 text-[10px] px-1.5 py-0.5 rounded-full">${highlight(s, query)}</span>`).join('')}
-                        </div>` : ''}
-
-                    ${r.md?.general_notes ? `
-                        <details class="mt-1">
-                            <summary class="text-[10px] text-slate-400 font-bold cursor-pointer hover:text-slate-600 uppercase">הערות ▶</summary>
-                            <div class="mt-1 text-xs text-slate-600 leading-relaxed p-2 bg-slate-50 rounded-lg">${highlight(r.md.general_notes.substring(0, 500) + (r.md.general_notes.length > 500 ? '…' : ''), query)}</div>
-                        </details>` : ''}
-                </div>`;
-            container.appendChild(card);
+    const searchScrollEl = document.getElementById('searchScroll');
+    if (searchScrollEl) {
+        searchScrollEl.addEventListener('scroll', () => {
+            if (currentSearchMode !== 'search') return;
+            if (searchRenderedCount >= searchResultsCache.length) return;
+            const nearBottom = searchScrollEl.scrollTop + searchScrollEl.clientHeight >= searchScrollEl.scrollHeight - 200;
+            if (nearBottom) renderSearchChunk(false);
         });
     }
 
@@ -2012,7 +2153,9 @@
             else activeTab.classList.add('border-blue-600', 'text-blue-800', 'bg-blue-50');
         }
 
-        if (viewName === 'distant') { dr_rebuildDerived(); dr_renderCurrentTab(); }
+        if (viewName === 'distant') {
+            if (dr_rebuildDerived()) dr_renderCurrentTab();
+        }
         if (viewName === 'search') {
             if (currentSearchMode === 'search') runSearch();
             else renderAnalysis();
@@ -2231,7 +2374,15 @@
         if (labelEl) labelEl.textContent = ds.label + ' (מקור)';
         const skyTitle = document.getElementById('skylineTitle');
         if (skyTitle) skyTitle.textContent = `מבט-על: פריסת ${ds.label}`;
-        initData();
+        const cached = ds._cache && ds._cache[activeMetric];
+        if (cached) {
+            fragments = cached.fragments;
+            orderedUnits = cached.orderedUnits;
+            sidebarCache = null;
+            applyProcessedData(cached.maxScore);
+        } else {
+            initData();
+        }
     }
 
     // ── multi-file fallback input ──
