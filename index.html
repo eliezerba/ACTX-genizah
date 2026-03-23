@@ -114,12 +114,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
                     פתח תיקיה
                 </button>
-                <button onclick="openSingleFile()" class="bg-slate-600 hover:bg-slate-500 px-4 py-2 rounded-lg text-xs font-bold shadow-md flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-                    פתח קובץ יחיד
-                </button>
                 <input type="file" id="multiFileInput" accept=".json" multiple class="hidden">
-                <input type="file" id="singleFileInput" accept=".json" class="hidden">
             </div>
 
             <!-- Enriched JSON (metadata) -->
@@ -398,14 +393,6 @@
                                 </select>
                             </div>
                             <div class="flex flex-col">
-                                <label class="text-[10px] font-bold text-slate-400 uppercase mb-1">הקבלות</label>
-                                <select id="matchFilter" onchange="runSearch()" class="px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-purple-400 shadow-sm">
-                                    <option value="all">הכל</option>
-                                    <option value="with">עם הקבלה בבהיר</option>
-                                    <option value="without">ללא הקבלה</option>
-                                </select>
-                            </div>
-                            <div class="flex flex-col">
                                 <label class="text-[10px] font-bold text-slate-400 uppercase mb-1">ציון מינ׳</label>
                                 <input type="number" id="searchMinScore" value="0" min="0" max="1" step="0.05" oninput="runSearch()" class="w-20 px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-purple-400 shadow-sm">
                             </div>
@@ -471,6 +458,71 @@
         Ki_Tavo:'כי תבוא', Nitzavim:'נצבים', Vayeilech:'וילך', Haazinu:'האזינו',
         VZot_HaBerachah:'וזאת הברכה',
     };
+    const PARASHA_ORDER = [
+        'Bereshit','Noach','Lech_Lecha','Vayera','Chayei_Sara','Toldot','Vayetzei','Vayishlach','Vayeshev','Miketz','Vayigash','Vayechi',
+        'Shemot','Vaera','Bo','Beshalach','Yitro','Mishpatim','Terumah','Tetzaveh','Ki_Tisa','Vayakhel','Pekudei',
+        'Vayikra','Tzav','Shemini','Tazria','Metzora','Acharei_Mot','Kedoshim','Emor','Behar','Bechukotai',
+        'Bamidbar','Nasso','Behaalotcha','Shelach','Korach','Chukat','Balak','Pinchas','Matot','Masei',
+        'Devarim','Vaetchanan','Eikev','Reeh','Shoftim','Ki_Teitzei','Ki_Tavo','Nitzavim','Vayeilech','Haazinu','VZot_HaBerachah'
+    ];
+    const PARASHA_ORDER_INDEX = Object.fromEntries(PARASHA_ORDER.map((p, i) => [p, i]));
+    const PARASHA_ALIASES = {
+        Achrei_Mot: 'Acharei_Mot',
+        HaAzinu: 'Haazinu',
+        Shlach: 'Shelach',
+        Shmini: 'Shemini'
+    };
+    const DEVARIM_RABBAH_PARASHA_BY_CHAPTER = {
+        1: 'Devarim',
+        2: 'Vaetchanan',
+        3: 'Eikev',
+        4: 'Reeh',
+        5: 'Shoftim',
+        6: 'Ki_Teitzei',
+        7: 'Ki_Tavo',
+        8: 'Nitzavim',
+        9: 'Vayeilech',
+        10: 'Haazinu',
+        11: 'VZot_HaBerachah'
+    };
+
+    function getParashaOrderIndex(parashaKey) {
+        if (!parashaKey) return 999;
+        const normalized = PARASHA_ALIASES[parashaKey] || parashaKey;
+        if (PARASHA_ORDER_INDEX[normalized] !== undefined) return PARASHA_ORDER_INDEX[normalized];
+        // Handle combined parashot (use first recognizable parasha)
+        const parts = normalized.split('_');
+        for (let i = parts.length - 1; i >= 1; i--) {
+            const cand = parts.slice(0, i).join('_');
+            if (PARASHA_ORDER_INDEX[cand] !== undefined) return PARASHA_ORDER_INDEX[cand];
+        }
+        return 999;
+    }
+
+    function parseParashaRef(ref) {
+        if (!ref) return null;
+        const m = ref.match(/^([A-Za-z]+(?:_[A-Za-z]+)*)_(\d+)(?:_(\d+))?$/);
+        if (!m) return null;
+        let rawKey = m[1];
+        let isIntro = false;
+        let isAppendix = false;
+        let appendixTo = null;
+        if (rawKey === 'Midrash_Tanchuma') isIntro = true;
+        if (rawKey.startsWith('Appendix_to_')) {
+            isAppendix = true;
+            appendixTo = rawKey.replace(/^Appendix_to_/, '');
+            rawKey = appendixTo;
+        }
+        const parashaKey = PARASHA_ALIASES[rawKey] || rawKey;
+        return {
+            parashaKey,
+            section: parseInt(m[2], 10) || 0,
+            sub: parseInt(m[3] || '0', 10) || 0,
+            isIntro,
+            isAppendix,
+            appendixTo: appendixTo ? (PARASHA_ALIASES[appendixTo] || appendixTo) : null
+        };
+    }
 
     function formatUnitLabel(key) {
         if (!key) return '-';
@@ -484,18 +536,31 @@
 
         if (bookPath.includes('Devarim_Rabbah')) {
             const m = ref.match(/^(\d+)_(\d+)$/);
-            if (m) return unitLabelMode === 'section_only' ? `פרק ${m[1]}` : `${m[1]}:${m[2]}`;
-            const m1 = ref.match(/^(\d+)$/);
-            if (m1) return `פרק ${m1[1]}`;
-        } else if (bookPath.includes('Tanchuma_Buber')) {
-            const m = ref.match(/^([A-Za-z]+(?:_[A-Za-z]+)*)_(\d+)_(\d+)$/);
             if (m) {
-                const he = PARASHA_HE_MAP[m[1]] || m[1].replace(/_/g, ' ');
-                return unitLabelMode === 'section_only' ? `${he} ${m[2]}` : `${he} ${m[2]}:${m[3]}`;
+                const parashaKey = DEVARIM_RABBAH_PARASHA_BY_CHAPTER[m[1]];
+                if (parashaKey) {
+                    const he = PARASHA_HE_MAP[parashaKey] || parashaKey.replace(/_/g, ' ');
+                    return `${he} ${m[2]}`;
+                }
+                return unitLabelMode === 'section_only' ? `פרק ${m[1]}` : `${m[1]}:${m[2]}`;
             }
-            const m2 = ref.match(/^([A-Za-z]+(?:_[A-Za-z]+)*)_(\d+)$/);
-            if (m2) return `${PARASHA_HE_MAP[m2[1]] || m2[1].replace(/_/g, ' ')} ${m2[2]}`;
-        } else if (bookPath.includes('Otzar_Midrashim') || ref.startsWith('Midrash_Tanchuma')) {
+            const m1 = ref.match(/^(\d+)$/);
+            if (m1) {
+                const parashaKey = DEVARIM_RABBAH_PARASHA_BY_CHAPTER[m1[1]];
+                if (parashaKey) return PARASHA_HE_MAP[parashaKey] || parashaKey.replace(/_/g, ' ');
+                return `פרק ${m1[1]}`;
+            }
+        } else if (bookPath.includes('Tanchuma_Buber') || bookPath.includes('Midrash_Tanchuma')) {
+            const info = parseParashaRef(ref);
+            if (info) {
+                if (info.isIntro || info.parashaKey === 'Midrash_Tanchuma') {
+                    return `תנחומא ${info.section}`;
+                }
+                const he = PARASHA_HE_MAP[info.parashaKey] || info.parashaKey.replace(/_/g, ' ');
+                const prefix = info.isAppendix ? `נספח ל${he}` : he;
+                return unitLabelMode === 'section_only' ? `${prefix} ${info.section}` : `${prefix} ${info.section}${info.sub ? ':' + info.sub : ''}`;
+            }
+        } else if (bookPath.includes('Otzar_Midrashim')) {
             const m = ref.match(/(\d+)$/);
             if (m) return unitLabelMode === 'section_only' ? `סעיף ${m[1]}` : `תנחומא ${m[1]}`;
         }
@@ -532,6 +597,60 @@
     function getBookLabel() {
         if (activeDatasetIdx >= 0 && allDatasets[activeDatasetIdx]) return allDatasets[activeDatasetIdx].label;
         return 'ספר מקור';
+    }
+
+    function getUnitSortKey(key) {
+        if (!key) return { group: 1, num: 0, tie: '' };
+        const parts = key.split('__');
+        const bookPath = parts.length >= 2 ? parts[0] : '';
+        const ref = parts.length >= 2 ? parts.slice(1).join('__') : key;
+        const isTanchuma = bookPath.includes('Tanchuma_Buber') || bookPath.includes('Midrash_Tanchuma');
+        if (isTanchuma) {
+            const info = parseParashaRef(ref);
+            if (info) {
+                return {
+                    group: 0,
+                    parashaIdx: info.isIntro || info.parashaKey === 'Midrash_Tanchuma' ? -1 : getParashaOrderIndex(info.parashaKey),
+                    appendixRank: info.isAppendix ? 1 : 0,
+                    section: info.section,
+                    sub: info.sub,
+                    tie: key
+                };
+            }
+        }
+        const isDevarimRabbah = bookPath.includes('Devarim_Rabbah');
+        if (isDevarimRabbah) {
+            const m = ref.match(/^(\d+)_(\d+)$/);
+            if (m) {
+                const parashaKey = DEVARIM_RABBAH_PARASHA_BY_CHAPTER[m[1]];
+                return {
+                    group: 0,
+                    parashaIdx: getParashaOrderIndex(parashaKey),
+                    appendixRank: 0,
+                    section: parseInt(m[2], 10) || 0,
+                    sub: 0,
+                    tie: key
+                };
+            }
+        }
+        return { group: 1, num: extractNum(key), tie: key };
+    }
+
+    function compareUnitKeys(a, b) {
+        const ka = getUnitSortKey(a);
+        const kb = getUnitSortKey(b);
+        if (ka.group !== kb.group) return ka.group - kb.group;
+        if (ka.group === 0) {
+            if (ka.parashaIdx !== kb.parashaIdx) return ka.parashaIdx - kb.parashaIdx;
+            const aAppend = ka.appendixRank || 0;
+            const bAppend = kb.appendixRank || 0;
+            if (aAppend !== bAppend) return aAppend - bAppend;
+            if (ka.section !== kb.section) return ka.section - kb.section;
+            if (ka.sub !== kb.sub) return ka.sub - kb.sub;
+            return (ka.tie || '').localeCompare(kb.tie || '');
+        }
+        if (ka.num !== kb.num) return ka.num - kb.num;
+        return (ka.tie || '').localeCompare(kb.tie || '');
     }
 
     function getScore(c) {
@@ -593,6 +712,7 @@
     let fragmentSortBy = 'count';
     let currentSearchMode = 'search';
     let currentInnerTab = 'text';
+    let currentView = 'units';
     // Multi-dataset
     let allDatasets = [];
     let activeDatasetIdx = -1;
@@ -602,6 +722,10 @@
     let unitLabelMode = 'full';
     // Performance: virtual sidebar cache
     let sidebarCache = null;
+    // Performance: avoid rebuilding DR derived data unless needed
+    let dr_needsRebuild = true;
+    // Performance: avoid re-running search when nothing changed
+    let lastSearchKey = null;
     // Fragments dataset filter
     let fragDatasetFilter = 'all';
 
@@ -723,7 +847,7 @@
         fragments = {};
         sidebarCache = null;
         orderedUnits = Object.keys(rawData);
-        orderedUnits.sort((a, b) => extractNum(a) - extractNum(b));
+        orderedUnits.sort(compareUnitKeys);
         let globalMaxScore = 0;
 
         orderedUnits.forEach(unitId => {
@@ -759,6 +883,7 @@
         updateSliderTrack();
         if (orderedUnits.length > 0) selectUnit(orderedUnits[0]);
         if (enrichedData) buildSearchFilters();
+        dr_needsRebuild = true;
         dr_buildAndRender();
     }
 
@@ -775,6 +900,7 @@
         const maxA = parseFloat(minScoreInput.max) || 1;
         if (v1 > v2) { let t = v1; v1 = v2; v2 = t; }
         scoreRange = [v1, v2];
+        dr_needsRebuild = true;
         rangeLabel.innerText = `${v1.toFixed(2)} – ${v2.toFixed(2)}`;
         sliderFill.style.left = (v1 / maxA * 100) + '%';
         sliderFill.style.width = ((v2 - v1) / maxA * 100) + '%';
@@ -788,10 +914,14 @@
     function updateUI() {
         renderSidebar();
         renderFragments();
-        dr_rebuildDerived();
-        dr_renderCurrentTab();
-        if (currentSearchMode === 'search') runSearch();
-        else renderAnalysis();
+        if (currentView === 'distant') {
+            dr_rebuildDerived();
+            dr_renderCurrentTab();
+        }
+        if (currentView === 'search') {
+            if (currentSearchMode === 'search') runSearch();
+            else renderAnalysis();
+        }
     }
 
     // ═══════════════════════════════════════════
@@ -1077,7 +1207,7 @@
 
         locKeys.forEach(loc => {
             // Apply dataset filter to hits within each fragment
-            let hits = fragments[loc].sort((a, b) => extractNum(a.unitId) - extractNum(b.unitId));
+            let hits = fragments[loc].sort((a, b) => compareUnitKeys(a.unitId, b.unitId));
             if (fragDatasetFilter !== 'all') {
                 const dsIdx = parseInt(fragDatasetFilter, 10);
                 const dsUnits = new Set(Object.keys(allDatasets[dsIdx]?.indexData || allDatasets[dsIdx]?.rawData || {}));
@@ -1225,6 +1355,7 @@
     }
 
     function dr_rebuildDerived() {
+        if (!dr_needsRebuild) return;
         dr_allFragments = {};
         dr_subjectIndex = {};
         for (const [bookName, ds] of Object.entries(dr_datasets)) {
@@ -1265,6 +1396,7 @@
                 }
             }
         }
+        dr_needsRebuild = false;
         dr_populateBookFilters();
     }
 
@@ -1300,6 +1432,7 @@
 
     function dr_buildAndRender() {
         dr_buildDatasets();
+        dr_needsRebuild = true;
         dr_rebuildDerived();
         const es = document.getElementById('dr-emptyState');
         if (es && Object.keys(dr_datasets).length) es.classList.add('hidden');
@@ -1524,7 +1657,6 @@
         document.getElementById('searchField').value = 'all';
         document.getElementById('langFilter').value = '';
         document.getElementById('ownerFilter').value = '';
-        document.getElementById('matchFilter').value = 'all';
         document.getElementById('searchMinScore').value = '0';
         runSearch();
     }
@@ -1535,8 +1667,10 @@
         const field = document.getElementById('searchField').value;
         const ownerFilter = document.getElementById('ownerFilter').value;
         const langFilter = document.getElementById('langFilter').value;
-        const matchFilter = document.getElementById('matchFilter').value;
         const minScore = parseFloat(document.getElementById('searchMinScore').value) || 0;
+        const searchKey = [query, field, ownerFilter, langFilter, minScore, enrichedData ? '1' : '0'].join('|');
+        if (lastSearchKey === searchKey) return;
+        lastSearchKey = searchKey;
 
         const container = document.getElementById('searchResults');
         container.innerHTML = '';
@@ -1565,9 +1699,6 @@
             };
 
             Object.entries(enrichedData).forEach(([nliId, md]) => {
-                const hasMatch = matchedMap.has(nliId) && matchedMap.get(nliId).length > 0;
-                if (matchFilter === 'with' && !hasMatch) return;
-                if (matchFilter === 'without' && hasMatch) return;
                 if (ownerFilter && !(md.current_owner || '').split('|')[0].trim().includes(ownerFilter)) return;
                 if (langFilter && !(md.language || '').split('|').map(l => l.trim()).includes(langFilter)) return;
                 if (query) {
@@ -1578,37 +1709,21 @@
             });
 
             // Also include fragment locations not in enriched data (if no enriched filter active)
-            if (!query && !ownerFilter && !langFilter && matchFilter !== 'without') {
+            if (!query && !ownerFilter && !langFilter) {
                 Object.entries(fragments).forEach(([loc, hits]) => {
                     const nliId = getNliId(loc);
                     if (!nliId || enrichedData[nliId]) return; // skip if already included
                     const validHits = hits.filter(h => h.score >= minScore);
-                    if (matchFilter === 'with' && validHits.length === 0) return;
                     results.push({ nliId, md: null, matches: validHits.map(h => ({ ...h, location: loc })), location: loc });
                 });
             }
         } else {
             // No enriched data: search in fragment locations
-            if (matchFilter !== 'without') {
-                Object.entries(fragments).forEach(([loc, hits]) => {
-                    if (query && !loc.toLowerCase().includes(query)) return;
-                    const validHits = hits.filter(h => h.score >= minScore);
-                    if (!validHits.length && matchFilter === 'with') return;
-                    results.push({ nliId: getNliId(loc), md: null, matches: validHits.map(h => ({ ...h, location: loc })), location: loc });
-                });
-            }
-            if (matchFilter === 'without' || matchFilter === 'all') {
-                if (matchFilter === 'without') {
-                    // Habahir passages with no valid matches
-                    orderedUnits.forEach(uid => {
-                        const item = rawData[uid];
-                        const validCands = (item._cands || []).filter(c => getScore(c) >= minScore);
-                        if (validCands.length === 0) {
-                            results.push({ unitId: uid, nliId: null, md: null, matches: [], isHabahirUnit: true });
-                        }
-                    });
-                }
-            }
+            Object.entries(fragments).forEach(([loc, hits]) => {
+                if (query && !loc.toLowerCase().includes(query)) return;
+                const validHits = hits.filter(h => h.score >= minScore);
+                results.push({ nliId: getNliId(loc), md: null, matches: validHits.map(h => ({ ...h, location: loc })), location: loc });
+            });
         }
 
         // Sort
@@ -1619,8 +1734,8 @@
         const withoutMatch = results.length - withMatch;
         document.getElementById('searchStatsBar').innerHTML = `
             <span class="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-xs font-bold">${results.length.toLocaleString()} תוצאות</span>
-            <span class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-xs font-bold">${withMatch.toLocaleString()} עם הקבלה בבהיר</span>
-            <span class="bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-xs font-bold">${withoutMatch.toLocaleString()} ללא הקבלה</span>
+            <span class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-xs font-bold">${withMatch.toLocaleString()} עם התאמות</span>
+            <span class="bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-xs font-bold">${withoutMatch.toLocaleString()} ללא התאמות</span>
             ${results.length > 100 ? '<span class="text-slate-400 text-xs">· מוצגות 100 ראשונות</span>' : ''}`;
 
         if (results.length === 0) {
@@ -1658,9 +1773,9 @@
                         </div>
                         <div class="mr-3 flex flex-col items-end gap-1 flex-shrink-0">
                             ${hasMatches
-                                ? `<span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">${uniqueUnits.length} קטעי בהיר מקבילים</span>
+                                ? `<span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">${uniqueUnits.length} קטעי מקור מקבילים</span>
                                    <span class="text-[10px] font-mono text-emerald-600">ציון: ${topScore.toFixed(3)}</span>`
-                                : `<span class="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full">ללא הקבלה ידועה</span>`}
+                                : `<span class="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full">ללא התאמה ידועה</span>`}
                         </div>
                     </div>
 
@@ -1873,6 +1988,7 @@
     //  NAVIGATION
     // ═══════════════════════════════════════════
     function switchView(viewName) {
+        currentView = viewName;
         ['units', 'fragments', 'distant', 'search'].forEach(v => {
             const view = document.getElementById('view-' + v);
             if (view) view.classList.toggle('hidden', v !== viewName);
@@ -2059,6 +2175,8 @@
         reader.onload = (evt) => {
             try {
                 enrichedData = JSON.parse(evt.target.result);
+                dr_needsRebuild = true;
+                lastSearchKey = null;
                 statusEl.textContent = `נטען ✓ (${Object.keys(enrichedData).length.toLocaleString()} רשומות)`;
                 statusEl.className = 'text-[10px] text-center px-2 py-0.5 rounded-full bg-teal-200 text-teal-800 font-bold';
                 buildSearchFilters();
@@ -2107,53 +2225,13 @@
         orderedUnits = [];
         sidebarCache = null;
         fragDatasetFilter = 'all';
+        lastSearchKey = null;
         renderDatasetTabs();
         const labelEl = document.getElementById('sourceBookLabel');
         if (labelEl) labelEl.textContent = ds.label + ' (מקור)';
         const skyTitle = document.getElementById('skylineTitle');
         if (skyTitle) skyTitle.textContent = `מבט-על: פריסת ${ds.label}`;
         initData();
-    }
-
-    async function openSingleFile() {
-        if (window.showOpenFilePicker) {
-            try {
-                const [fh] = await window.showOpenFilePicker({
-                    types: [{ description: 'קובץ JSON', accept: { 'application/json': ['.json'] } }]
-                });
-                const file = await fh.getFile();
-                showLoadBanner('טוען...');
-                const name = file.name;
-                if (name.toLowerCase().endsWith('-index.json')) {
-                    // Index file — also prompt for units directory
-                    const indexData = JSON.parse(await file.text());
-                    const baseName = name.replace(/-index\.json$/i, '');
-                    const label = getBookLabelFromKeys(Object.keys(indexData));
-                    let unitsDir = null;
-                    if (window.showDirectoryPicker) {
-                        try {
-                            if (confirm(`נמצא קובץ אינדקס עבור "${label}".\nכדי לאפשר צפייה בטקסטים, לחץ אישור ובחר את תיקיית ${baseName}-units/`)) {
-                                unitsDir = await window.showDirectoryPicker({ mode: 'read' });
-                            }
-                        } catch(e2) { /* user cancelled */ }
-                    }
-                    hideLoadBanner();
-                    const dataset = { id: name, label, indexData, rawData: null, unitsDir, mode: 'indexed' };
-                    const existing = allDatasets.findIndex(d => d.id === name);
-                    if (existing >= 0) allDatasets[existing] = dataset; else allDatasets.push(dataset);
-                    renderDatasetTabs();
-                    if (activeDatasetIdx < 0) switchDataset(allDatasets.length - 1);
-                } else {
-                    hideLoadBanner();
-                    await loadComparisonJsonFile(file);
-                }
-            } catch(e) {
-                if (e.name !== 'AbortError') alert('שגיאה בפתיחת הקובץ.');
-                hideLoadBanner();
-            }
-        } else {
-            document.getElementById('singleFileInput').click();
-        }
     }
 
     // ── multi-file fallback input ──
@@ -2171,14 +2249,6 @@
         this.value = '';
     });
 
-    document.getElementById('singleFileInput').addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        showLoadBanner('טוען...');
-        loadComparisonJsonFile(file).then(() => hideLoadBanner());
-        this.value = '';
-    });
-
     document.getElementById('enrichedJsonInput').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
@@ -2191,6 +2261,7 @@
     // ═══════════════════════════════════════════
     function setActiveMetric(metric) {
         activeMetric = metric;
+        dr_needsRebuild = true;
         sidebarCache = null;  // force sidebar rebuild with new scores
         const metricLabels = { alignment_score: 'ציון יישור', norm_score: 'ציון מנורמל', score: 'ציון גלם' };
         ['alignment_score', 'norm_score', 'score'].forEach(m => {
