@@ -560,6 +560,11 @@
                 const prefix = info.isAppendix ? `נספח ל${he}` : he;
                 return unitLabelMode === 'section_only' ? `${prefix} ${info.section}` : `${prefix} ${info.section}${info.sub ? ':' + info.sub : ''}`;
             }
+        } else if (bookPath.includes('Midrash_Tehillim')) {
+            const m = ref.match(/^(\d+)_(\d+)$/);
+            if (m) return `תהלים ${m[1]}:${m[2]}`;
+            const m1 = ref.match(/^(\d+)$/);
+            if (m1) return `תהלים ${m1[1]}`;
         } else if (bookPath.includes('Otzar_Midrashim')) {
             const m = ref.match(/(\d+)$/);
             if (m) return unitLabelMode === 'section_only' ? `סעיף ${m[1]}` : `תנחומא ${m[1]}`;
@@ -588,6 +593,11 @@
             if (m) return `https://www.sefaria.org.il/Midrash_Tanchuma_Buber,_${m[1]}.${m[2]}.${m[3]}`;
             const m2 = ref.match(/^([A-Za-z]+(?:_[A-Za-z]+)*)_(\d+)$/);
             if (m2) return `https://www.sefaria.org.il/Midrash_Tanchuma_Buber,_${m2[1]}.${m2[2]}`;
+        } else if (bookPath.includes('Midrash_Tehillim')) {
+            const m = ref.match(/^(\d+)_(\d+)$/);
+            if (m) return `https://www.sefaria.org.il/Midrash_Tehillim.${m[1]}.${m[2]}`;
+            const m1 = ref.match(/^(\d+)$/);
+            if (m1) return `https://www.sefaria.org.il/Midrash_Tehillim.${m1[1]}`;
         } else if (bookPath.includes('Otzar_Midrashim') || ref.startsWith('Midrash_Tanchuma')) {
             return `https://www.sefaria.org.il/Midrash_Tanchuma`;
         }
@@ -632,6 +642,11 @@
                     tie: key
                 };
             }
+        }
+        const isTehillim = bookPath.includes('Midrash_Tehillim');
+        if (isTehillim) {
+            const m = ref.match(/^(\d+)_(\d+)$/);
+            if (m) return { group: 0, parashaIdx: parseInt(m[1], 10), appendixRank: 0, section: parseInt(m[2], 10), sub: 0, tie: key };
         }
         return { group: 1, num: extractNum(key), tie: key };
     }
@@ -1365,12 +1380,14 @@
     const DR_BOOK_LABELS = {
         'Devarim_Rabbah': 'דברים רבה',
         'Midrash_Tanchuma': 'מדרש תנחומא',
-        'Midrash_Tanchuma_Buber': 'תנחומא (בובר)'
+        'Midrash_Tanchuma_Buber': 'תנחומא (בובר)',
+        'Midrash_Tehillim': 'מדרש תהלים'
     };
     const DR_BOOK_COLORS = {
         'Devarim_Rabbah': { bar: '#f59e0b', glow: 'rgba(245,158,11,0.4)', bg: '#78350f', text: '#fbbf24' },
         'Midrash_Tanchuma': { bar: '#3b82f6', glow: 'rgba(59,130,246,0.4)', bg: '#1e3a5f', text: '#93c5fd' },
-        'Midrash_Tanchuma_Buber': { bar: '#10b981', glow: 'rgba(16,185,129,0.4)', bg: '#064e3b', text: '#6ee7b7' }
+        'Midrash_Tanchuma_Buber': { bar: '#10b981', glow: 'rgba(16,185,129,0.4)', bg: '#064e3b', text: '#6ee7b7' },
+        'Midrash_Tehillim': { bar: '#8b5cf6', glow: 'rgba(139,92,246,0.4)', bg: '#2e1065', text: '#c4b5fd' }
     };
     const DR_LANG_MAP = { heb:'עברית', arc:'ארמית', jrb:'יהודית-ערבית', arb:'ערבית', ara:'ערבית', yid:'יידיש', lad:'לאדינו', gre:'יוונית', lat:'לטינית', per:'פרסית' };
 
@@ -2277,6 +2294,7 @@
         if (k.includes('Devarim_Rabbah')) return 'דברים רבה';
         if (k.includes('Tanchuma_Buber')) return 'מדרש תנחומא (בובר)';
         if (k.includes('Midrash_Tanchuma') || k.includes('Otzar_Midrashim')) return 'מדרש תנחומא';
+        if (k.includes('Midrash_Tehillim')) return 'מדרש תהלים';
         // Generic: take last part of path before __
         const m = k.match(/([A-Za-z_]+)__/);
         if (m) return m[1].split('_').filter(Boolean).join(' ');
