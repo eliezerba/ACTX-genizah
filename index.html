@@ -735,6 +735,8 @@
     // Metric & label mode
     let activeMetric = 'alignment_score';
     let unitLabelMode = 'full';
+    // Background pre-loader
+    let _preloadToken = 0;  // increment to cancel any running preload
     // Performance: virtual sidebar cache
     let sidebarCache = null;
     let sidebarFilteredKeys = [];
@@ -923,6 +925,47 @@
         if (enrichedData) buildSearchFilters();
         dr_needsRebuild = true;
         dr_buildAndRender();
+        // Start background pre-loader after a short delay so the UI renders first
+        const dsIdx = activeDatasetIdx;
+        if (allDatasets[dsIdx]?.mode === 'indexed' && allDatasets[dsIdx]?.unitsDir) {
+            setTimeout(() => startBackgroundPreload(dsIdx), 800);
+        }
+    }
+
+    async function startBackgroundPreload(dsIdx) {
+        const ds = allDatasets[dsIdx];
+        if (!ds || ds.mode !== 'indexed' || !ds.unitsDir) return;
+        const token = ++_preloadToken;
+        const units = Object.keys(ds.indexData || {});
+        const total = units.length;
+        let done = 0;
+        const BATCH = 4;
+        // UI indicator
+        let indEl = document.getElementById('preloadIndicator');
+        if (!indEl) {
+            indEl = document.createElement('div');
+            indEl.id = 'preloadIndicator';
+            indEl.style.cssText = 'font-size:10px;color:#93c5fd;font-weight:700;white-space:nowrap;display:flex;align-items:center;gap:6px;';
+            const hdr = document.querySelector('header .flex.gap-3');
+            if (hdr) hdr.prepend(indEl);
+        }
+        const updateInd = () => {
+            if (!indEl) return;
+            if (done >= total) { indEl.textContent = ''; indEl.style.display = 'none'; return; }
+            indEl.style.display = 'flex';
+            indEl.innerHTML = `<div style="width:10px;height:10px;border:2px solid #93c5fd;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;"></div> ⤵ ${done}/${total}`;
+        };
+        updateInd();
+        for (let i = 0; i < units.length; i += BATCH) {
+            if (_preloadToken !== token) { if (indEl) { indEl.textContent = ''; indEl.style.display = 'none'; } return; }
+            const batch = units.slice(i, i + BATCH).filter(uid => !rawData[uid]?._hasFullData);
+            await Promise.all(batch.map(uid => loadUnitDetail(dsIdx, uid)));
+            done = Math.min(i + BATCH, total);
+            updateInd();
+            // Yield to browser between batches
+            await new Promise(r => setTimeout(r, 0));
+        }
+        updateInd();
     }
 
     // ═══════════════════════════════════════════
@@ -2380,6 +2423,7 @@
             rawData = ds.rawData || {};
         }
 
+        ++_preloadToken; // cancel any running preload for previous dataset
         currentUnitId = null;
         currentCandIdx = 0;
         fragments = {};
